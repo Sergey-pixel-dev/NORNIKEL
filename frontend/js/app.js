@@ -77,7 +77,7 @@ function renderValidationResult(data) {
     html += '<ul class="result-list">';
     
     data.checks.forEach(check => {
-        const icon = check.passed ? '✅' : '❌';
+        const icon = check.passed ? '[+]' : '[-]';
         html += `<li><span class="icon">${icon}</span><div><strong>${check.name}:</strong> ${check.message}</div></li>`;
     });
     
@@ -85,7 +85,7 @@ function renderValidationResult(data) {
     
     if (data.suggestions && data.suggestions.length > 0) {
         html += '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px dashed #ccc;">';
-        html += '<strong>💡 Рекомендации:</strong><ul style="margin-top: 8px; padding-left: 20px; font-size: 13px; color: #555;">';
+        html += '<strong>Рекомендации:</strong><ul style="margin-top: 8px; padding-left: 20px; font-size: 13px; color: #555;">';
         data.suggestions.forEach(s => html += `<li>${s}</li>`);
         html += '</ul></div>';
     }
@@ -186,7 +186,7 @@ function renderDecomposeResult(data) {
     const box = document.getElementById('decompose-result');
     box.className = 'result-box result-info';
     box.innerHTML = `
-        <div class="result-title">⚡ Цель декомпозирована</div>
+        <div class="result-title">[OK] Цель декомпозирована</div>
         <p style="font-size: 13px; color: #555; margin-bottom: 12px;">${data.reasoning}</p>
         <div style="font-size: 12px; color: #888;">Связность: <strong>${data.traceability_score}%</strong></div>
     `;
@@ -242,13 +242,13 @@ function renderMatchResult(data) {
     const box = document.getElementById('match-result');
     box.className = 'result-box result-success';
 
-    let html = '<div class="result-title">🎯 Распределение задач</div>';
+    let html = '<div class="result-title">[OK] Распределение задач</div>';
     html += '<ul class="result-list">';
 
     data.assignments.forEach(a => {
         const reason = a.reason ? `<br><span style="font-size: 11px; color: #888;">${a.reason}</span>` : '';
         html += `<li>
-            <span class="icon">👤</span>
+            <span class="icon">[>]</span>
             <div>
                 <strong>${a.task}</strong> → <span style="color: #0066CC; font-weight: 600;">${a.employee}</span>
                 ${reason}

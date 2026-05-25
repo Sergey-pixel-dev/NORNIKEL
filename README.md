@@ -1,4 +1,4 @@
-# 🤖 Nornikel OKR AI Agent
+# Nornikel OKR AI Agent
 
 ИИ-ассистент для работы с целями и ключевыми результатами (OKR/KPI) в стиле интерфейса Норникеля.
 
