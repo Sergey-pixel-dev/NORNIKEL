@@ -1,10 +1,15 @@
 // === Состояние приложения ===
 const appState = {
+    currentGoalId: null,
     currentGoal: '',
+    currentTitle: '',
     currentTasks: [],
     decomposed: false,
     validated: false
 };
+
+// === API URL ===
+const API_URL = window.location.origin;
 
 // === Табы ===
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -45,18 +50,101 @@ function activateStep(stepName) {
     document.querySelectorAll('.ai-panel').forEach(p => p.classList.remove('active'));
     document.getElementById('panel-' + stepName).classList.add('active');
 
-    // Если перешли извне на декомпозицию без цели — показать форму ввода
+    // Загружаем список целей на каждом шаге
+    loadGoalsList(stepName);
+
     if (stepName === 'decompose') {
         renderDecomposePanel();
     }
-    // Если перешли извне на матчинг без задач — показать форму ввода
     if (stepName === 'match') {
         renderMatchPanel();
     }
 }
 
-// === API URL ===
-const API_URL = window.location.origin;
+// === Загрузка списка целей ===
+async function loadGoalsList(stepName) {
+    const selectId = 'goals-select-' + stepName;
+    let select = document.getElementById(selectId);
+    if (!select) return;
+
+    try {
+        const response = await fetch(`${API_URL}/api/goals`);
+        const goals = await response.json();
+
+        select.innerHTML = '<option value="">-- Выберите цель --</option>';
+        goals.forEach(g => {
+            const option = document.createElement('option');
+            option.value = g.id;
+            option.textContent = `${g.title} (оценка: ${g.validation_score})`;
+            if (g.id === appState.currentGoalId) {
+                option.selected = true;
+            }
+            select.appendChild(option);
+        });
+    } catch (e) {
+        select.innerHTML = '<option value="">Ошибка загрузки</option>';
+    }
+}
+
+function onGoalSelected(stepName, goalId) {
+    if (!goalId) return;
+    appState.currentGoalId = goalId;
+    loadGoalDetails(goalId, stepName);
+}
+
+async function loadGoalDetails(goalId, stepName) {
+    try {
+        const response = await fetch(`${API_URL}/api/goals/${goalId}`);
+        const goal = await response.json();
+
+        appState.currentGoal = goal.description;
+        appState.currentTitle = goal.title;
+        appState.validated = true;
+
+        if (stepName === 'validate') {
+            document.getElementById('goal-input').value = goal.description;
+            // Восстанавливаем KR если есть
+            if (goal.suggestions && goal.suggestions.length > 0) {
+                // Ничего не делаем, KR не хранятся отдельно пока
+            }
+            // Показываем результаты валидации
+            renderValidationResult({
+                is_valid: goal.is_valid,
+                score: goal.validation_score,
+                checks: goal.validation_checks || [],
+                suggestions: goal.suggestions || []
+            }, goal.description, goal.id);
+        }
+
+        if (stepName === 'decompose') {
+            document.getElementById('decompose-goal-input').value = goal.description;
+            if (goal.decompositions && goal.decompositions.length > 0) {
+                const d = goal.decompositions[goal.decompositions.length - 1];
+                renderDecomposeResult({
+                    company: d.company_goal,
+                    teams: d.team_goals,
+                    individual: d.individual_goal,
+                    reasoning: d.reasoning,
+                    traceability_score: d.traceability_score
+                });
+                appState.decomposed = true;
+            }
+        }
+
+        if (stepName === 'match') {
+            if (goal.assignments && goal.assignments.length > 0) {
+                const assignments = goal.assignments.map(a => ({
+                    task: a.task_text,
+                    employee: a.employee_name,
+                    reason: a.reason
+                }));
+                renderMatchResult({ assignments, confidence: 87 });
+            }
+        }
+    } catch (e) {
+        console.error('Ошибка загрузки цели:', e);
+    }
+}
 
 // === Валидация цели ===
 async function validateGoal() {
@@ -80,22 +168,25 @@ async function validateGoal() {
         const response = await fetch(`${API_URL}/api/validate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ goal, key_results: krs })
+            body: JSON.stringify({ description: goal, key_results: krs })
         });
+
         const data = await response.json();
-        renderValidationResult(data, goal);
+        appState.currentGoalId = data.goal_id;
+        appState.currentTitle = data.title;
+        renderValidationResult(data.validation, goal, data.goal_id);
     } catch (e) {
-        renderValidationResult(getMockValidation(goal, krs), goal);
+        const mock = getMockValidation(goal, krs);
+        renderValidationResult(mock, goal, null);
     }
 }
 
-function renderValidationResult(data, goal) {
+function renderValidationResult(data, goal, goalId) {
     const box = document.getElementById('validation-result');
     box.className = 'result-box ' + (data.is_valid ? 'result-success' : data.score > 50 ? 'result-warning' : 'result-error');
 
     let html = '';
 
-    // Предупреждение если цель не валидна
     if (!data.is_valid) {
         html += `<div class="result-title" style="color: #c62828;">[!] Цель требует доработки</div>`;
         html += `<div style="margin-bottom: 12px; padding: 10px; background: #fff3e0; border-left: 3px solid #ff9800; font-size: 13px; color: #555;">
@@ -122,14 +213,21 @@ function renderValidationResult(data, goal) {
         html += '</ul></div>';
     }
 
-    // Кнопка перехода к декомпозиции (всегда показывается)
+    // Кнопка перехода к декомпозиции
     html += `<div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #ddd;">`;
     if (!data.is_valid) {
         html += `<div style="font-size: 12px; color: #888; margin-bottom: 10px;">Вы можете продолжить декомпозицию, но рекомендуется сначала устранить замечания.</div>`;
     }
-    html += `<button class="btn-primary" onclick="goToDecompose('${escapeHtml(goal)}')">
-        <span class="btn-icon">[2]</span> Перейти к декомпозиции
-    </button>`;
+    const gid = goalId || appState.currentGoalId;
+    if (gid) {
+        html += `<button class="btn-primary" onclick="goToDecompose('${gid}')">
+            <span class="btn-icon">[2]</span> Перейти к декомпозиции
+        </button>`;
+    } else {
+        html += `<button class="btn-primary" onclick="goToDecomposeManual('${escapeHtml(goal)}')">
+            <span class="btn-icon">[2]</span> Перейти к декомпозиции (демо)
+        </button>`;
+    }
     html += `</div>`;
 
     box.innerHTML = html;
@@ -141,11 +239,21 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function goToDecompose(goal) {
+function goToDecompose(goalId) {
+    appState.currentGoalId = goalId;
+    activateStep('decompose');
+    // Загружаем детали цели и запускаем декомпозицию
+    loadGoalDetails(goalId, 'decompose').then(() => {
+        if (appState.currentGoal) {
+            runDecompose(appState.currentGoal);
+        }
+    });
+}
+
+function goToDecomposeManual(goal) {
     appState.currentGoal = goal;
     activateStep('decompose');
-    // Автоматически запускаем декомпозицию
-    runDecompose(goal);
+    renderDecomposePanel();
 }
 
 function getMockValidation(goal, krs) {
@@ -204,12 +312,10 @@ function renderDecomposePanel() {
     const goalInputSection = document.getElementById('decompose-goal-input-section');
     const resultSection = document.getElementById('decompose-result-section');
 
-    if (appState.currentGoal && appState.validated) {
-        // Пришли из валидации — скрыть форму ввода, показать результаты
+    if (appState.currentGoalId && appState.validated) {
         goalInputSection.classList.add('hidden');
         resultSection.classList.remove('hidden');
     } else {
-        // Пришли извне — показать форму ввода
         goalInputSection.classList.remove('hidden');
         resultSection.classList.add('hidden');
     }
@@ -235,22 +341,31 @@ async function runDecompose(goal) {
     resultBox.classList.remove('hidden');
     resultBox.innerHTML = '<div class="loading-text">Декомпозируем цель...</div>';
 
-    try {
-        const response = await fetch(`${API_URL}/api/decompose`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ goal })
-        });
-        const data = await response.json();
-        renderDecomposeResult(data);
-    } catch (e) {
-        renderDecomposeResult(getMockDecompose(goal));
+    if (appState.currentGoalId) {
+        try {
+            const response = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/decompose`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            renderDecomposeResult({
+                company: data.company,
+                teams: data.teams,
+                individual: data.individual,
+                reasoning: data.reasoning,
+                traceability_score: data.traceability_score
+            });
+            return;
+        } catch (e) {
+            console.log('Backend decompose failed, using mock');
+        }
     }
+
+    renderDecomposeResult(getMockDecompose(goal));
 }
 
-// backward compatibility
 function decomposeGoal() {
-    if (appState.currentGoal && appState.validated) {
+    if (appState.currentGoalId && appState.validated) {
         runDecompose(appState.currentGoal);
     } else {
         const input = document.getElementById('decompose-goal-input');
@@ -264,7 +379,6 @@ function renderDecomposeResult(data) {
     document.getElementById('team-goal-b').textContent = data.teams[1] || '—';
     document.getElementById('individual-goal').textContent = data.individual || '—';
 
-    // Формируем задачи для матчинга
     appState.currentTasks = [
         { text: data.teams[0] || 'Задача команды A', type: 'Backend' },
         { text: data.teams[1] || 'Задача команды B', type: 'Frontend' },
@@ -312,12 +426,10 @@ function renderMatchPanel() {
     const manualSection = document.getElementById('match-manual-section');
 
     if (appState.decomposed && appState.currentTasks.length > 0) {
-        // Пришли из декомпозиции — показать автоматические задачи
         autoSection.classList.remove('hidden');
         manualSection.classList.add('hidden');
         renderTasksFromDecompose();
     } else {
-        // Пришли извне — показать форму ручного ввода
         autoSection.classList.add('hidden');
         manualSection.classList.remove('hidden');
     }
@@ -339,6 +451,25 @@ function renderTasksFromDecompose() {
 }
 
 async function runMatch() {
+    if (appState.currentGoalId) {
+        try {
+            const resultBox = document.getElementById('match-result');
+            resultBox.classList.remove('hidden');
+            resultBox.innerHTML = '<div class="loading-text">Анализируем компетенции...</div>';
+
+            const response = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/match`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            renderMatchResult(data);
+            return;
+        } catch (e) {
+            console.log('Backend match failed, using mock');
+        }
+    }
+
+    // Fallback
     const tasks = appState.currentTasks.length > 0
         ? appState.currentTasks
         : Array.from(document.querySelectorAll('#tasks-list-manual .task-item')).map(t => ({
@@ -356,20 +487,9 @@ async function runMatch() {
     resultBox.classList.remove('hidden');
     resultBox.innerHTML = '<div class="loading-text">Анализируем компетенции...</div>';
 
-    try {
-        const response = await fetch(`${API_URL}/api/match`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tasks, employees })
-        });
-        const data = await response.json();
-        renderMatchResult(data);
-    } catch (e) {
-        renderMatchResult(getMockMatch(tasks, employees));
-    }
+    renderMatchResult(getMockMatch(tasks, employees));
 }
 
-// backward compatibility
 function matchEmployees() {
     runMatch();
 }

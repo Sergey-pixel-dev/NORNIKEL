@@ -255,6 +255,13 @@
                         </div>
                         <div class="panel-body">
                             <div class="input-group">
+                                <label class="field-label">Сохраненные цели</label>
+                                <select id="goals-select-validate" class="field-select" onchange="onGoalSelected('validate', this.value)" style="margin-bottom: 12px;">
+                                    <option value="">-- Загрузка целей... --</option>
+                                </select>
+                            </div>
+
+                            <div class="input-group">
                                 <label class="field-label">Введите цель (Objective)</label>
                                 <textarea id="goal-input" class="field-textarea" rows="4" placeholder="Например: Повысить эффективность работы отдела..."></textarea>
                                 <div class="hint-text">Опишите цель максимально конкретно. Хорошая цель содержит метрику и срок.</div>
@@ -290,6 +297,13 @@
                             <span class="panel-badge">Шаг 2 из 3</span>
                         </div>
                         <div class="panel-body">
+                            <div class="input-group">
+                                <label class="field-label">Сохраненные цели</label>
+                                <select id="goals-select-decompose" class="field-select" onchange="onGoalSelected('decompose', this.value)" style="margin-bottom: 12px;">
+                                    <option value="">-- Загрузка целей... --</option>
+                                </select>
+                            </div>
+
                             <!-- Форма ввода цели (при переходе извне) -->
                             <div id="decompose-goal-input-section">
                                 <div class="input-group">
@@ -349,6 +363,13 @@
                             <span class="panel-badge">Шаг 3 из 3</span>
                         </div>
                         <div class="panel-body">
+                            <div class="input-group">
+                                <label class="field-label">Сохраненные цели</label>
+                                <select id="goals-select-match" class="field-select" onchange="onGoalSelected('match', this.value)" style="margin-bottom: 12px;">
+                                    <option value="">-- Загрузка целей... --</option>
+                                </select>
+                            </div>
+
                             <div class="teams-section">
                                 <h4 class="section-subtitle">Команда: Цифровизация процессов</h4>
                                 <div class="employees-grid">

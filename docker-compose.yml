@@ -1,11 +1,35 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nornikel-ai-postgres
+    environment:
+      POSTGRES_DB: nornikel_okr
+      POSTGRES_USER: okr_user
+      POSTGRES_PASSWORD: okr_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - nornikel-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U okr_user -d nornikel_okr"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: nornikel-ai-backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://okr_user:okr_pass@postgres:5432/nornikel_okr
     ports:
       - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - nornikel-network
     restart: unless-stopped
@@ -32,3 +56,6 @@ services:
 networks:
   nornikel-network:
     driver: bridge
+
+volumes:
+  postgres_data:
