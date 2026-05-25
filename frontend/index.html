@@ -290,45 +290,55 @@
                             <span class="panel-badge">Шаг 2 из 3</span>
                         </div>
                         <div class="panel-body">
-                            <div class="decompose-preview">
-                                <div class="goal-source">
-                                    <label class="field-label">Исходная цель</label>
-                                    <div id="source-goal-text" class="source-text">—</div>
+                            <!-- Форма ввода цели (при переходе извне) -->
+                            <div id="decompose-goal-input-section">
+                                <div class="input-group">
+                                    <label class="field-label">Введите цель для декомпозиции</label>
+                                    <textarea id="decompose-goal-input" class="field-textarea" rows="3" placeholder="Например: Цифровизация процесса учета сырья..."></textarea>
                                 </div>
+                                <button class="btn-primary" onclick="decomposeGoal()">
+                                    <span class="btn-icon">[2]</span> Разбить цель
+                                </button>
                             </div>
 
-                            <div class="hierarchy-tree">
-                                <div class="tree-level company-level">
-                                    <div class="tree-node">
-                                        <span class="node-badge">Компания</span>
-                                        <div id="company-goal" class="node-text">—</div>
+                            <!-- Результат декомпозиции (при переходе из валидации) -->
+                            <div id="decompose-result-section" class="hidden">
+                                <div class="decompose-preview">
+                                    <div class="goal-source">
+                                        <label class="field-label">Исходная цель</label>
+                                        <div id="source-goal-text" class="source-text">—</div>
                                     </div>
                                 </div>
-                                <div class="tree-connector">↓</div>
-                                <div class="tree-level team-level">
-                                    <div class="tree-node">
-                                        <span class="node-badge">Команда A</span>
-                                        <div id="team-goal-a" class="node-text">—</div>
+
+                                <div class="hierarchy-tree">
+                                    <div class="tree-level company-level">
+                                        <div class="tree-node">
+                                            <span class="node-badge">Компания</span>
+                                            <div id="company-goal" class="node-text">—</div>
+                                        </div>
                                     </div>
-                                    <div class="tree-node">
-                                        <span class="node-badge">Команда B</span>
-                                        <div id="team-goal-b" class="node-text">—</div>
+                                    <div class="tree-connector">↓</div>
+                                    <div class="tree-level team-level">
+                                        <div class="tree-node">
+                                            <span class="node-badge">Команда A</span>
+                                            <div id="team-goal-a" class="node-text">—</div>
+                                        </div>
+                                        <div class="tree-node">
+                                            <span class="node-badge">Команда B</span>
+                                            <div id="team-goal-b" class="node-text">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="tree-connector">↓</div>
+                                    <div class="tree-level individual-level">
+                                        <div class="tree-node">
+                                            <span class="node-badge">Сотрудник</span>
+                                            <div id="individual-goal" class="node-text">—</div>
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="tree-connector">↓</div>
-                                <div class="tree-level individual-level">
-                                    <div class="tree-node">
-                                        <span class="node-badge">Сотрудник</span>
-                                        <div id="individual-goal" class="node-text">—</div>
-                                    </div>
-                                </div>
+
+                                <div id="decompose-result" class="result-box hidden"></div>
                             </div>
-
-                            <button class="btn-primary" onclick="decomposeGoal()">
-                                <span class="btn-icon">[2]</span> Разбить цель
-                            </button>
-
-                            <div id="decompose-result" class="result-box hidden"></div>
                         </div>
                     </div>
 
@@ -393,9 +403,16 @@
                                 </div>
                             </div>
 
-                            <div class="task-assignment">
+                            <!-- Автоматические задачи (из декомпозиции) -->
+                            <div id="match-auto-section" class="task-assignment hidden">
+                                <h4 class="section-subtitle">Задачи из декомпозиции</h4>
+                                <div id="tasks-list-auto" class="tasks-list"></div>
+                            </div>
+
+                            <!-- Ручной ввод задач (при переходе извне) -->
+                            <div id="match-manual-section" class="task-assignment">
                                 <h4 class="section-subtitle">Задачи для распределения</h4>
-                                <div id="tasks-list" class="tasks-list">
+                                <div id="tasks-list-manual" class="tasks-list">
                                     <div class="task-item">
                                         <span class="task-text">Разработка модели прогнозирования</span>
                                         <span class="task-badge ml">ML</span>
