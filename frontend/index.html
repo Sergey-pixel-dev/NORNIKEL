@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Карты КПЭ — ИИ-ассистент</title>
+    <link rel="stylesheet" href="css/nornikel-theme.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Шапка -->
+    <header class="shell-header">
+        <div class="shell-header-left">
+            <button class="btn-back" title="Назад">&#x27A4;</button>
+            <div class="logo">
+                <svg viewBox="0 0 60 40" width="40" height="28">
+                    <ellipse cx="22" cy="20" rx="16" ry="16" fill="#0066CC" opacity="0.9"/>
+                    <ellipse cx="38" cy="20" rx="16" ry="16" fill="#0099FF" opacity="0.8"/>
+                </svg>
+            </div>
+            <h1 class="app-title">Карты КПЭ</h1>
+        </div>
+        <div class="shell-header-right">
+            <div class="user-info">
+                <span class="user-name">Иванов Алексей Петрович</span>
+                <div class="user-avatar">ИА</div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Основной контент -->
+    <main class="main-container">
+        <!-- Профиль -->
+        <div class="profile-section">
+            <div class="profile-avatar-large">
+                <svg viewBox="0 0 100 100" width="64" height="64">
+                    <circle cx="50" cy="35" r="22" fill="#94a3b8"/>
+                    <path d="M20 85 Q50 55 80 85" fill="#94a3b8"/>
+                </svg>
+            </div>
+            <div class="profile-details">
+                <h2 class="profile-name">Иванов Алексей Петрович</h2>
+                <p class="profile-position">Директор департамента цифровизации</p>
+            </div>
+        </div>
+
+        <!-- Табы -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="kpi">КОМАНДНЫЕ КПЭ (4)</button>
+            <button class="tab-btn" data-tab="individual">ИНДИВИДУАЛЬНЫЕ (3)</button>
+            <button class="tab-btn" data-tab="ai-assistant">🤖 ИИ-ассистент OKR</button>
+            <button class="tab-btn" data-tab="comments">КОММЕНТАРИИ</button>
+        </div>
+
+        <!-- Вкладка КПЭ -->
+        <div class="tab-content active" id="tab-kpi">
+            <div class="kpi-summary">
+                <div class="summary-item">
+                    <span class="summary-label">Сумма весов:</span>
+                    <span class="summary-value">100%</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Оценка выполнения:</span>
+                    <span class="summary-value">0.0%</span>
+                </div>
+            </div>
+
+            <!-- КПЭ 1 -->
+            <div class="kpi-card">
+                <div class="kpi-header" onclick="toggleKpi(this)">
+                    <span class="kpi-toggle">▼</span>
+                    <span class="kpi-number">1.</span>
+                    <input type="text" class="kpi-title-input" value="EBITDA" readonly>
+                    <div class="kpi-meta">
+                        <span>Удельный вес: <strong>30%</strong></span>
+                        <span>Процент выполнения: <strong>0.0%</strong></span>
+                        <span>Взвешенный процент: <strong>0.0%</strong></span>
+                    </div>
+                </div>
+                <div class="kpi-body">
+                    <div class="kpi-grid">
+                        <div class="kpi-col">
+                            <label class="field-label">Описание показателя</label>
+                            <textarea class="field-textarea" rows="8" readonly>Прибыль до вычета процентов, налогов и амортизации, млн долл. США.
+
+Данные для расчета: Данные для расчета на основании Международных стандартов финансовой отчетности (далее – МСФО).
+
+Оценка по итогам периода: непрерывный показатель:
+- менее минимума процент выполнения равен 0;
+- в диапазоне (от минимума включительно до цели) процент выполнения определяется в прямой линейной зависимости от 75 до 100;
+- в диапазоне (от цели до максимума включительно) процент выполнения определяется в прямой линейной зависимости от 100 до 110;
+- свыше максимума процент выполнения равен 110.</textarea>
+                        </div>
+                        <div class="kpi-col">
+                            <div class="form-row">
+                                <label class="field-label required">Вид КПЭ</label>
+                                <div class="toggle-group">
+                                    <button class="toggle-btn">Количественный</button>
+                                    <button class="toggle-btn active">Качественный</button>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <label class="field-label required">Метод расчета</label>
+                                <div class="toggle-group">
+                                    <button class="toggle-btn">Дискретный</button>
+                                    <button class="toggle-btn active">Непрерывный</button>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <label class="field-label">Ед. измерения</label>
+                                <input type="text" class="field-input" value="млн. USD" readonly>
+                            </div>
+                            <div class="form-row">
+                                <label class="field-label">Тип КПЭ</label>
+                                <select class="field-select" disabled>
+                                    <option>Тип КПЭ отсутствует</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <label class="field-label required">Вес</label>
+                                <input type="number" class="field-input" value="30" readonly>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="planned-values">
+                        <h4 class="section-title">Плановые значения</h4>
+                        <div class="values-grid">
+                            <div class="value-card value-min">
+                                <div class="value-bar"></div>
+                                <div class="value-content">
+                                    <span class="value-label">Минимум (75%)</span>
+                                    <textarea class="value-textarea" readonly>Годовой бюджет 2026 г.</textarea>
+                                </div>
+                            </div>
+                            <div class="value-card value-target">
+                                <div class="value-bar"></div>
+                                <div class="value-content">
+                                    <span class="value-label">Цель (100%)</span>
+                                    <textarea class="value-textarea" readonly>Превышение Годового бюджета 2026 г. на 5,8%</textarea>
+                                </div>
+                            </div>
+                            <div class="value-card value-max">
+                                <div class="value-bar"></div>
+                                <div class="value-content">
+                                    <span class="value-label">Максимум (110%)</span>
+                                    <textarea class="value-textarea" readonly>Превышение Годового бюджета 2026 г. на 10,0%</textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- КПЭ 2 -->
+            <div class="kpi-card">
+                <div class="kpi-header" onclick="toggleKpi(this)">
+                    <span class="kpi-toggle">▼</span>
+                    <span class="kpi-number">2.</span>
+                    <input type="text" class="kpi-title-input" value="FCF скорр." readonly>
+                    <div class="kpi-meta">
+                        <span>Удельный вес: <strong>50%</strong></span>
+                        <span>Процент выполнения: <strong>0.0%</strong></span>
+                        <span>Взвешенный процент: <strong>0.0%</strong></span>
+                    </div>
+                </div>
+                <div class="kpi-body">
+                    <div class="kpi-grid">
+                        <div class="kpi-col">
+                            <label class="field-label">Описание показателя</label>
+                            <textarea class="field-textarea" rows="8" readonly>Свободный денежный поток (скорректированный)</textarea>
+                        </div>
+                        <div class="kpi-col">
+                            <div class="form-row">
+                                <label class="field-label required">Вид КПЭ</label>
+                                <div class="toggle-group">
+                                    <button class="toggle-btn">Количественный</button>
+                                    <button class="toggle-btn active">Качественный</button>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <label class="field-label required">Вес</label>
+                                <input type="number" class="field-input" value="50" readonly>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="planned-values">
+                        <h4 class="section-title">Плановые значения</h4>
+                        <div class="values-grid">
+                            <div class="value-card value-min">
+                                <div class="value-bar"></div>
+                                <div class="value-content">
+                                    <span class="value-label">Минимум (75%)</span>
+                                    <textarea class="value-textarea" readonly>Годовой бюджет 2026 г.</textarea>
+                                </div>
+                            </div>
+                            <div class="value-card value-target">
+                                <div class="value-bar"></div>
+                                <div class="value-content">
+                                    <span class="value-label">Цель (100%)</span>
+                                    <textarea class="value-textarea" readonly>Превышение Годового бюджета 2026 г. на 288 млн долл.</textarea>
+                                </div>
+                            </div>
+                            <div class="value-card value-max">
+                                <div class="value-bar"></div>
+                                <div class="value-content">
+                                    <span class="value-label">Максимум (110%)</span>
+                                    <textarea class="value-textarea" readonly>Превышение Годового бюджета 2026 г. на 671 млн долл.</textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка ИИ-ассистент -->
+        <div class="tab-content" id="tab-ai-assistant">
+            <div class="ai-container">
+                <div class="ai-sidebar">
+                    <h3 class="ai-title">🤖 ИИ-ассистент OKR</h3>
+                    <p class="ai-subtitle">Проверка, декомпозиция и назначение целей</p>
+                    
+                    <div class="ai-steps">
+                        <div class="step-item active" data-step="validate">
+                            <div class="step-number">1</div>
+                            <div class="step-text">
+                                <strong>Валидация цели</strong>
+                                <span>Проверка на SMART и корректность</span>
+                            </div>
+                        </div>
+                        <div class="step-item" data-step="decompose">
+                            <div class="step-number">2</div>
+                            <div class="step-text">
+                                <strong>Декомпозиция</strong>
+                                <span>Разбивка по уровням и командам</span>
+                            </div>
+                        </div>
+                        <div class="step-item" data-step="match">
+                            <div class="step-number">3</div>
+                            <div class="step-text">
+                                <strong>Назначение</strong>
+                                <span>Матчинг задач и сотрудников</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ai-workspace">
+                    <!-- Шаг 1: Валидация -->
+                    <div class="ai-panel active" id="panel-validate">
+                        <div class="panel-header">
+                            <h3>Валидация цели</h3>
+                            <span class="panel-badge">Шаг 1 из 3</span>
+                        </div>
+                        <div class="panel-body">
+                            <div class="input-group">
+                                <label class="field-label">Введите цель (Objective)</label>
+                                <textarea id="goal-input" class="field-textarea" rows="4" placeholder="Например: Повысить эффективность работы отдела..."></textarea>
+                                <div class="hint-text">Опишите цель максимально конкретно. Хорошая цель содержит метрику и срок.</div>
+                            </div>
+                            
+                            <div class="input-group">
+                                <label class="field-label">Key Results (ключевые результаты)</label>
+                                <div id="kr-list">
+                                    <div class="kr-item">
+                                        <input type="text" class="field-input kr-input" placeholder="KR1: Измеримый результат...">
+                                    </div>
+                                    <div class="kr-item">
+                                        <input type="text" class="field-input kr-input" placeholder="KR2: Измеримый результат...">
+                                    </div>
+                                </div>
+                                <button class="btn-add" onclick="addKr()">+ Добавить KR</button>
+                            </div>
+
+                            <button class="btn-primary" onclick="validateGoal()">
+                                <span class="btn-icon">🔍</span> Проверить цель
+                            </button>
+
+                            <div id="validation-result" class="result-box hidden">
+                                <!-- Результат будет здесь -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Шаг 2: Декомпозиция -->
+                    <div class="ai-panel" id="panel-decompose">
+                        <div class="panel-header">
+                            <h3>Декомпозиция цели</h3>
+                            <span class="panel-badge">Шаг 2 из 3</span>
+                        </div>
+                        <div class="panel-body">
+                            <div class="decompose-preview">
+                                <div class="goal-source">
+                                    <label class="field-label">Исходная цель</label>
+                                    <div id="source-goal-text" class="source-text">—</div>
+                                </div>
+                            </div>
+
+                            <div class="hierarchy-tree">
+                                <div class="tree-level company-level">
+                                    <div class="tree-node">
+                                        <span class="node-badge">Компания</span>
+                                        <div id="company-goal" class="node-text">—</div>
+                                    </div>
+                                </div>
+                                <div class="tree-connector">↓</div>
+                                <div class="tree-level team-level">
+                                    <div class="tree-node">
+                                        <span class="node-badge">Команда A</span>
+                                        <div id="team-goal-a" class="node-text">—</div>
+                                    </div>
+                                    <div class="tree-node">
+                                        <span class="node-badge">Команда B</span>
+                                        <div id="team-goal-b" class="node-text">—</div>
+                                    </div>
+                                </div>
+                                <div class="tree-connector">↓</div>
+                                <div class="tree-level individual-level">
+                                    <div class="tree-node">
+                                        <span class="node-badge">Сотрудник</span>
+                                        <div id="individual-goal" class="node-text">—</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button class="btn-primary" onclick="decomposeGoal()">
+                                <span class="btn-icon">⚡</span> Разбить цель
+                            </button>
+
+                            <div id="decompose-result" class="result-box hidden"></div>
+                        </div>
+                    </div>
+
+                    <!-- Шаг 3: Матчинг -->
+                    <div class="ai-panel" id="panel-match">
+                        <div class="panel-header">
+                            <h3>Назначение исполнителей</h3>
+                            <span class="panel-badge">Шаг 3 из 3</span>
+                        </div>
+                        <div class="panel-body">
+                            <div class="teams-section">
+                                <h4 class="section-subtitle">Команда: Цифровизация процессов</h4>
+                                <div class="employees-grid">
+                                    <div class="employee-card" data-skills="python,data-analysis,machine-learning">
+                                        <div class="employee-avatar">ПС</div>
+                                        <div class="employee-info">
+                                            <strong>Петров С.А.</strong>
+                                            <span>Data Scientist</span>
+                                        </div>
+                                        <div class="employee-skills">
+                                            <span class="skill-tag hard">Python</span>
+                                            <span class="skill-tag hard">ML</span>
+                                            <span class="skill-tag soft">Аналитика</span>
+                                        </div>
+                                    </div>
+                                    <div class="employee-card" data-skills="javascript,react,ui-design">
+                                        <div class="employee-avatar">ИК</div>
+                                        <div class="employee-info">
+                                            <strong>Иванова К.М.</strong>
+                                            <span>Frontend-разработчик</span>
+                                        </div>
+                                        <div class="employee-skills">
+                                            <span class="skill-tag hard">React</span>
+                                            <span class="skill-tag hard">JS</span>
+                                            <span class="skill-tag soft">UI/UX</span>
+                                        </div>
+                                    </div>
+                                    <div class="employee-card" data-skills="java,spring,teamlead">
+                                        <div class="employee-avatar">СД</div>
+                                        <div class="employee-info">
+                                            <strong>Сидоров Д.В.</strong>
+                                            <span>Team Lead</span>
+                                        </div>
+                                        <div class="employee-skills">
+                                            <span class="skill-tag hard">Java</span>
+                                            <span class="skill-tag hard">Spring</span>
+                                            <span class="skill-tag soft">Лидерство</span>
+                                        </div>
+                                    </div>
+                                    <div class="employee-card" data-skills="sql,bi,reporting">
+                                        <div class="employee-avatar">КА</div>
+                                        <div class="employee-info">
+                                            <strong>Козлова А.Р.</strong>
+                                            <span>BI-аналитик</span>
+                                        </div>
+                                        <div class="employee-skills">
+                                            <span class="skill-tag hard">SQL</span>
+                                            <span class="skill-tag hard">Power BI</span>
+                                            <span class="skill-tag soft">Коммуникация</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="task-assignment">
+                                <h4 class="section-subtitle">Задачи для распределения</h4>
+                                <div id="tasks-list" class="tasks-list">
+                                    <div class="task-item">
+                                        <span class="task-text">Разработка модели прогнозирования</span>
+                                        <span class="task-badge ml">ML</span>
+                                    </div>
+                                    <div class="task-item">
+                                        <span class="task-text">Создание дашборда мониторинга</span>
+                                        <span class="task-badge frontend">Frontend</span>
+                                    </div>
+                                    <div class="task-item">
+                                        <span class="task-text">Интеграция с SAP</span>
+                                        <span class="task-badge backend">Backend</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button class="btn-primary" onclick="matchEmployees()">
+                                <span class="btn-icon">🎯</span> Подобрать исполнителей
+                            </button>
+
+                            <div id="match-result" class="result-box hidden"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Вкладка Индивидуальные -->
+        <div class="tab-content" id="tab-individual">
+            <div class="placeholder-section">
+                <p>Индивидуальные КПЭ будут отображаться здесь.</p>
+            </div>
+        </div>
+
+        <!-- Вкладка Комментарии -->
+        <div class="tab-content" id="tab-comments">
+            <div class="placeholder-section">
+                <p>Комментарии к КПЭ будут отображаться здесь.</p>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
