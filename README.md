@@ -16,13 +16,20 @@ ai-agent/
 │   │   │   └── routes.py    # REST API endpoints
 │   │   ├── models.py        # Pydantic модели
 │   │   └── main.py          # Точка входа FastAPI
+│   ├── Dockerfile
+│   ├── .dockerignore
 │   └── requirements.txt
 ├── frontend/                # Заглушка интерфейса Норникеля
 │   ├── index.html
 │   ├── css/
 │   │   └── nornikel-theme.css
-│   └── js/
-│       └── app.js
+│   ├── js/
+│   │   └── app.js
+│   ├── Dockerfile
+│   ├── .dockerignore
+│   └── nginx.conf
+├── docker-compose.yml
+├── .gitignore
 └── README.md
 ```
 
@@ -32,46 +39,68 @@ ai-agent/
 2. **Декомпозиция** — разбивка цели компании → команды → индивидуальные задачи
 3. **Матчинг** — назначение задач сотрудникам на основе hard/soft skills
 
-## Запуск
+## Запуск через Docker
 
-### Backend
+### Требования
 
-```bash
-cd ai-agent/backend
+- Docker 20.10+
+- Docker Compose 2.0+
 
-# Создать виртуальное окружение (рекомендуется)
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# или: venv\Scripts\activate  # Windows
-
-# Установить зависимости
-pip install -r requirements.txt
-
-# Запустить сервер
-uvicorn app.main:app --reload --port 8000
-```
-
-API будет доступен по адресу: http://localhost:8000
-
-- Swagger UI: http://localhost:8000/docs
-- Health check: http://localhost:8000/health
-
-### Frontend
-
-Фронтенд — статические HTML/CSS/JS. Можно открыть напрямую:
+### Быстрый старт
 
 ```bash
-# Способ 1: просто открыть файл в браузере
-cd ai-agent/frontend
-# Открыть index.html двойным кликом
+cd ai-agent
 
-# Способ 2: через Python HTTP-сервер
-cd ai-agent/frontend
-python -m http.server 8080
-# Открыть http://localhost:8080
+# Собрать и запустить
+docker compose up --build
+
+# Или в фоне
+docker compose up --build -d
 ```
 
-> **Примечание:** Если backend не запущен, фронтенд автоматически переключается на демо-режим (mock-данные).
+После запуска:
+
+| Сервис | URL | Описание |
+|--------|-----|----------|
+| Frontend | http://localhost:8082 | Интерфейс Норникеля + ИИ-ассистент |
+| Backend API | http://localhost:8000 | REST API |
+| Swagger UI | http://localhost:8000/docs | Документация API |
+
+### Остановка
+
+```bash
+# Остановить контейнеры
+docker compose down
+
+# Остановить и удалить volumes
+docker compose down -v
+```
+
+### Пересборка
+
+```bash
+# Полная пересборка
+docker compose up --build --force-recreate
+
+# Пересборка только backend
+docker compose up --build backend
+
+# Пересборка только frontend
+docker compose up --build frontend
+```
+
+### Просмотр логов
+
+```bash
+# Все контейнеры
+docker compose logs -f
+
+# Только backend
+docker compose logs -f backend
+
+# Только frontend
+docker compose logs -f frontend
+```
 
 ## API Endpoints
 
@@ -119,13 +148,36 @@ curl -X POST http://localhost:8000/api/match \
   }'
 ```
 
+## Архитектура
+
+```
+┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+│   Пользователь   │─────▶│  Frontend   │─────▶│   Backend   │
+│  (браузер)       │      │  (nginx)    │      │  (FastAPI)  │
+└─────────────┘      └─────────────┘      └─────────────┘
+                                                │
+                    ┌───────────────────────────┼───────────┐
+                    ▼                           ▼           ▼
+              ┌──────────┐            ┌────────────┐  ┌────────────┐
+              │Validator │            │Decomposer  │  │Matcher     │
+              │(SMART)   │            │(каскад)    │  │(skills)    │
+              └──────────┘            └────────────┘  └────────────┘
+```
+
 ## Интеграция с Qwen (будущее)
 
 В текущей версии логика агента реализована на правилах (rule-based). Для подключения Qwen:
 
-1. Установить `openai` или `transformers`
-2. В `validator.py`, `decomposer.py`, `matcher.py` заменить rule-based логику на вызовы LLM
-3. Использовать промпты из `backend/app/agent/prompts/` (создать при интеграции)
+1. Добавить в `backend/requirements.txt`:
+   ```
+   openai>=1.0
+   # или
+   transformers>=4.35
+   ```
+
+2. В `backend/app/agent/` создать модуль `llm_client.py` для вызовов Qwen
+
+3. Заменить rule-based логику в `validator.py`, `decomposer.py`, `matcher.py` на LLM-промпты
 
 Пример промпта для валидации:
 ```
@@ -135,6 +187,17 @@ curl -X POST http://localhost:8000/api/match \
 
 Цель: {goal}
 Key Results: {key_results}
+```
+
+## Git
+
+```bash
+# Просмотр истории
+cd ai-agent
+git log --oneline
+
+# Статус
+git status
 ```
 
 ## Лицензия
