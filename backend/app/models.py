@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Any
 
 
 class GoalInput(BaseModel):
@@ -26,7 +26,7 @@ class DecomposeInput(BaseModel):
 
 class DecomposeResult(BaseModel):
     company: str
-    teams: List[str]
+    teams: List[Any]
     individual: str
     reasoning: str
     traceability_score: int
