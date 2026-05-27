@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
 from app.db.database import create_tables
+from app.db.seed import seed_data
 
 app = FastAPI(
     title="Nornikel OKR AI Agent",
@@ -24,6 +25,7 @@ app.include_router(router)
 @app.on_event("startup")
 async def on_startup():
     await create_tables()
+    await seed_data()
 
 
 @app.get("/health")

@@ -65,11 +65,16 @@ function activateStep(stepName) {
 async function loadGoalsList(stepName) {
     const selectId = 'goals-select-' + stepName;
     let select = document.getElementById(selectId);
-    if (!select) return;
+    if (!select) {
+        console.log('[loadGoalsList] select not found:', selectId);
+        return;
+    }
 
     try {
+        console.log('[loadGoalsList] fetching goals for', stepName);
         const response = await fetch(`${API_URL}/api/goals`);
         const goals = await response.json();
+        console.log('[loadGoalsList] got', goals.length, 'goals');
 
         select.innerHTML = '<option value="">-- Выберите цель --</option>';
         goals.forEach(g => {
@@ -82,6 +87,7 @@ async function loadGoalsList(stepName) {
             select.appendChild(option);
         });
     } catch (e) {
+        console.error('[loadGoalsList] error:', e);
         select.innerHTML = '<option value="">Ошибка загрузки</option>';
     }
 }
@@ -165,19 +171,37 @@ async function validateGoal() {
     resultBox.innerHTML = '<div class="loading-text">Анализируем цель...</div>';
 
     try {
+        console.log('[validateGoal] sending request');
         const response = await fetch(`${API_URL}/api/validate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ description: goal, key_results: krs })
         });
 
+        if (!response.ok) {
+            const err = await response.text();
+            throw new Error(`HTTP ${response.status}: ${err}`);
+        }
+
         const data = await response.json();
+        console.log('[validateGoal] saved goal_id:', data.goal_id);
         appState.currentGoalId = data.goal_id;
         appState.currentTitle = data.title;
         renderValidationResult(data.validation, goal, data.goal_id);
+
+        // Обновляем списки целей на всех шагах
+        console.log('[validateGoal] reloading goal lists...');
+        await loadGoalsList('validate');
+        await loadGoalsList('decompose');
+        await loadGoalsList('match');
+        console.log('[validateGoal] lists reloaded');
     } catch (e) {
-        const mock = getMockValidation(goal, krs);
-        renderValidationResult(mock, goal, null);
+        console.error('[validateGoal] error:', e);
+        const resultBox = document.getElementById('validation-result');
+        resultBox.innerHTML = `<div class="result-box result-error">
+            <div class="result-title">[!] Ошибка соединения с сервером</div>
+            <p style="font-size: 13px; color: #555;">Не удалось сохранить цель. Проверьте, что backend запущен (${e.message}).</p>
+        </div>`;
     }
 }
 
@@ -545,6 +569,11 @@ function getMockMatch(tasks, employees) {
 
 // === Инициализация ===
 document.addEventListener('DOMContentLoaded', () => {
+    // Загружаем списки целей на всех шагах при старте
+    loadGoalsList('validate');
+    loadGoalsList('decompose');
+    loadGoalsList('match');
+
     fetch(`${API_URL}/health`).catch(() => {
         console.log('Backend недоступен, используется демо-режим');
     });
