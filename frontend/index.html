@@ -265,11 +265,25 @@
                             </div>
 
                             <div class="input-group">
+                                <label class="field-label">Загрузить документ (.pdf, .docx)</label>
+                                <input type="file" id="goal-file-input" class="field-input" accept=".pdf,.docx">
+                                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                    <button class="btn-secondary" onclick="uploadDocument()">📎 Загрузить текст</button>
+                                </div>
+                            </div>
+
+                            <div class="input-group">
                                 <label class="field-label">Введите цель (Objective)</label>
                                 <textarea id="goal-input" class="field-textarea" rows="4" placeholder="Например: Повысить эффективность работы отдела..."></textarea>
                                 <div class="hint-text">Опишите цель максимально конкретно. Хорошая цель содержит метрику и срок.</div>
                             </div>
-                            
+
+                            <div style="margin-bottom: 16px;">
+                                <button class="btn-secondary" onclick="aiRewriteGoal()">
+                                    ✨ Переписать при помощи ИИ
+                                </button>
+                            </div>
+
                             <div class="input-group">
                                 <label class="field-label">Key Results (ключевые результаты)</label>
                                 <div id="kr-list">
@@ -307,19 +321,8 @@
                                 </select>
                             </div>
 
-                            <!-- Форма ввода цели (при переходе извне) -->
-                            <div id="decompose-goal-input-section">
-                                <div class="input-group">
-                                    <label class="field-label">Введите цель для декомпозиции</label>
-                                    <textarea id="decompose-goal-input" class="field-textarea" rows="3" placeholder="Например: Цифровизация процесса учета сырья..."></textarea>
-                                </div>
-                                <button class="btn-primary" onclick="decomposeGoal()">
-                                    <span class="btn-icon">[2]</span> Разбить цель
-                                </button>
-                            </div>
-
-                            <!-- Результат декомпозиции (при переходе из валидации) -->
-                            <div id="decompose-result-section" class="hidden">
+                            <!-- Результат декомпозиции -->
+                            <div id="decompose-result-section">
                                 <div class="decompose-preview">
                                     <div class="goal-source">
                                         <label class="field-label">Исходная цель</label>
@@ -327,7 +330,7 @@
                                     </div>
                                 </div>
 
-                                <div class="hierarchy-tree">
+                                <div class="hierarchy-tree" id="decompose-tree">
                                     <div class="tree-level company-level">
                                         <div class="tree-node">
                                             <span class="node-badge">Компания</span>
@@ -335,15 +338,8 @@
                                         </div>
                                     </div>
                                     <div class="tree-connector">↓</div>
-                                    <div class="tree-level team-level">
-                                        <div class="tree-node">
-                                            <span class="node-badge">Команда A</span>
-                                            <div id="team-goal-a" class="node-text">—</div>
-                                        </div>
-                                        <div class="tree-node">
-                                            <span class="node-badge">Команда B</span>
-                                            <div id="team-goal-b" class="node-text">—</div>
-                                        </div>
+                                    <div class="tree-level team-level" id="team-level-container">
+                                        <!-- dynamic team nodes -->
                                     </div>
                                     <div class="tree-connector">↓</div>
                                     <div class="tree-level individual-level">
@@ -353,6 +349,10 @@
                                         </div>
                                     </div>
                                 </div>
+
+                                <button class="btn-primary" onclick="runDecomposeFromSelection()">
+                                    <span class="btn-icon">[2]</span> Разбить цель
+                                </button>
 
                                 <div id="decompose-result" class="result-box hidden"></div>
                             </div>
@@ -374,87 +374,33 @@
                             </div>
 
                             <div class="teams-section">
-                                <h4 class="section-subtitle">Команда: Цифровизация процессов</h4>
-                                <div class="employees-grid">
-                                    <div class="employee-card" data-skills="python,data-analysis,machine-learning">
-                                        <div class="employee-avatar">ПС</div>
-                                        <div class="employee-info">
-                                            <strong>Петров С.А.</strong>
-                                            <span>Data Scientist</span>
-                                        </div>
-                                        <div class="employee-skills">
-                                            <span class="skill-tag hard">Python</span>
-                                            <span class="skill-tag hard">ML</span>
-                                            <span class="skill-tag soft">Аналитика</span>
-                                        </div>
-                                    </div>
-                                    <div class="employee-card" data-skills="javascript,react,ui-design">
-                                        <div class="employee-avatar">ИК</div>
-                                        <div class="employee-info">
-                                            <strong>Иванова К.М.</strong>
-                                            <span>Frontend-разработчик</span>
-                                        </div>
-                                        <div class="employee-skills">
-                                            <span class="skill-tag hard">React</span>
-                                            <span class="skill-tag hard">JS</span>
-                                            <span class="skill-tag soft">UI/UX</span>
-                                        </div>
-                                    </div>
-                                    <div class="employee-card" data-skills="java,spring,teamlead">
-                                        <div class="employee-avatar">СД</div>
-                                        <div class="employee-info">
-                                            <strong>Сидоров Д.В.</strong>
-                                            <span>Team Lead</span>
-                                        </div>
-                                        <div class="employee-skills">
-                                            <span class="skill-tag hard">Java</span>
-                                            <span class="skill-tag hard">Spring</span>
-                                            <span class="skill-tag soft">Лидерство</span>
-                                        </div>
-                                    </div>
-                                    <div class="employee-card" data-skills="sql,bi,reporting">
-                                        <div class="employee-avatar">КА</div>
-                                        <div class="employee-info">
-                                            <strong>Козлова А.Р.</strong>
-                                            <span>BI-аналитик</span>
-                                        </div>
-                                        <div class="employee-skills">
-                                            <span class="skill-tag hard">SQL</span>
-                                            <span class="skill-tag hard">Power BI</span>
-                                            <span class="skill-tag soft">Коммуникация</span>
-                                        </div>
-                                    </div>
+                                <h4 class="section-subtitle">Сотрудники</h4>
+                                <div id="employees-grid" class="employees-grid">
+                                    <!-- dynamic employee cards -->
                                 </div>
                             </div>
 
-                            <!-- Автоматические задачи (из декомпозиции) -->
-                            <div id="match-auto-section" class="task-assignment hidden">
-                                <h4 class="section-subtitle">Задачи из декомпозиции</h4>
-                                <div id="tasks-list-auto" class="tasks-list"></div>
-                            </div>
-
-                            <!-- Ручной ввод задач (при переходе извне) -->
-                            <div id="match-manual-section" class="task-assignment">
-                                <h4 class="section-subtitle">Задачи для распределения</h4>
-                                <div id="tasks-list-manual" class="tasks-list">
-                                    <div class="task-item">
-                                        <span class="task-text">Разработка модели прогнозирования</span>
-                                        <span class="task-badge ml">ML</span>
+                            <div class="task-assignment">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                    <h4 class="section-subtitle" style="margin: 0;">Задачи для распределения</h4>
+                                    <div style="display: flex; gap: 8px;">
+                                        <button class="btn-add" onclick="addTask()">+ Добавить задачу</button>
+                                        <button class="btn-secondary" onclick="loadTasksFromDecomposition()">🔄 Загрузить из декомпозиции</button>
                                     </div>
-                                    <div class="task-item">
-                                        <span class="task-text">Создание дашборда мониторинга</span>
-                                        <span class="task-badge frontend">Frontend</span>
-                                    </div>
-                                    <div class="task-item">
-                                        <span class="task-text">Интеграция с SAP</span>
-                                        <span class="task-badge backend">Backend</span>
-                                    </div>
+                                </div>
+                                <div id="tasks-list-editable" class="tasks-list">
+                                    <!-- dynamic editable tasks -->
                                 </div>
                             </div>
 
-                            <button class="btn-primary" onclick="matchEmployees()">
-                                <span class="btn-icon">[3]</span> Подобрать исполнителей
-                            </button>
+                            <div style="display: flex; gap: 12px; margin-top: 16px;">
+                                <button class="btn-primary" onclick="saveAssignments()">
+                                    <span class="btn-icon">💾</span> Сохранить назначения
+                                </button>
+                                <button class="btn-secondary" onclick="openRollbackModal()">
+                                    ↩️ Откат
+                                </button>
+                            </div>
 
                             <div id="match-result" class="result-box hidden"></div>
                         </div>
@@ -478,6 +424,52 @@
         </div>
     </main>
 
-    <script src="js/app.js?v=3"></script>
+    <!-- Diff Modal -->
+    <div id="diff-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>ИИ предлагает изменения</h3>
+                <button class="modal-close" onclick="closeDiffModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="diff-section">
+                    <div class="diff-label">Текущая версия</div>
+                    <div id="diff-old" class="diff-box diff-old"></div>
+                </div>
+                <div class="diff-section">
+                    <div class="diff-label">Предложение ИИ</div>
+                    <div id="diff-new" class="diff-box diff-new"></div>
+                </div>
+                <div id="diff-kr-section" class="diff-section hidden">
+                    <div class="diff-label">Key Results от ИИ</div>
+                    <ul id="diff-kr-list" class="diff-kr-list"></ul>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeDiffModal()">Отклонить</button>
+                <button class="btn-primary" onclick="acceptDiff()">Принять изменения</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rollback Modal -->
+    <div id="rollback-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Откат к предыдущей версии</h3>
+                <button class="modal-close" onclick="closeRollbackModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <label class="field-label">Выберите версию</label>
+                <select id="rollback-version-select" class="field-select"></select>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeRollbackModal()">Отмена</button>
+                <button class="btn-primary" onclick="confirmRollback()">Откатить</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js?v=4"></script>
 </body>
 </html>

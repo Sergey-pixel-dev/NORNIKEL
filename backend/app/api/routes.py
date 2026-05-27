@@ -196,6 +196,11 @@ async def api_list_tasks(goal_id: UUID, db: AsyncSession = Depends(get_db)):
     return await get_tasks_by_goal(db, goal_id)
 
 
+@router.post("/tasks", response_model=TaskRead)
+async def api_create_task(data: TaskCreate, db: AsyncSession = Depends(get_db)):
+    return await create_task(db, data)
+
+
 @router.put("/tasks/{task_id}", response_model=TaskRead)
 async def api_update_task(task_id: UUID, data: TaskUpdate, db: AsyncSession = Depends(get_db)):
     task = await update_task(db, task_id, data)
