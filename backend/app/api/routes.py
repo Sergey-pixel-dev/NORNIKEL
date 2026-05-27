@@ -290,7 +290,43 @@ async def api_list_employees(db: AsyncSession = Depends(get_db)):
     return await get_employees(db)
 
 
-# --- Legacy Match (mock) ---
+# --- AI Match (suggest & apply) ---
+
+@router.post("/goals/{goal_id}/suggest-assignments")
+async def api_suggest_assignments(goal_id: UUID, db: AsyncSession = Depends(get_db)):
+    """ИИ предлагает распределение задач по сотрудникам (без сохранения)."""
+    goal = await get_goal(db, goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Цель не найдена")
+
+    tasks_db = await get_tasks_by_goal(db, goal_id)
+    if not tasks_db:
+        raise HTTPException(status_code=400, detail="У цели нет задач. Сначала сгенерируйте задачи.")
+
+    employees_db = await get_employees(db)
+    employees = [
+        {"name": e.name, "role": e.role, "skills": [s.lower() for s in e.skills]}
+        for e in employees_db
+    ]
+
+    tasks = [{"text": t.text, "type": t.type} for t in tasks_db]
+    result = match_employees_to_tasks(tasks, employees)
+
+    # Сопоставляем task_text с task_id
+    suggestions = []
+    for a in result.assignments:
+        task = next((t for t in tasks_db if t.text == a.task), None)
+        employee = next((e for e in employees_db if e.name == a.employee), None)
+        suggestions.append({
+            "task_id": str(task.id) if task else None,
+            "task_text": a.task,
+            "employee_id": str(employee.id) if employee else None,
+            "employee_name": a.employee,
+            "reason": a.reason,
+        })
+
+    return {"suggestions": suggestions}
+
 
 @router.post("/goals/{goal_id}/match", response_model=MatchResult)
 async def api_match_goal(goal_id: UUID, db: AsyncSession = Depends(get_db)):

@@ -694,7 +694,6 @@ body {
 .hierarchy-tree {
     display: flex;
     flex-direction: column;
-    align-items: center;
     gap: 12px;
     margin: 24px 0;
     padding: 20px;
@@ -707,6 +706,7 @@ body {
     gap: 16px;
     justify-content: center;
     width: 100%;
+    flex-wrap: wrap;
 }
 
 .tree-node {
@@ -714,7 +714,9 @@ body {
     border: 1px solid #d0dce8;
     border-radius: 4px;
     padding: 12px 16px;
-    min-width: 220px;
+    min-width: 180px;
+    flex: 1 1 200px;
+    max-width: 100%;
     text-align: center;
     box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
@@ -734,12 +736,28 @@ body {
     font-size: 13px;
     color: #444;
     line-height: 1.4;
+    min-height: 1.4em;
+}
+
+.node-text-editable {
+    border: 1px dashed #b0c4de;
+    padding: 6px;
+    border-radius: 2px;
+    background: #fff;
+    text-align: left;
+    outline: none;
+}
+
+.node-text-editable:focus {
+    border-color: #0066CC;
+    background: #e8f4fc;
 }
 
 .tree-connector {
     font-size: 20px;
     color: #90a4ae;
     font-weight: 700;
+    text-align: center;
 }
 
 .company-level .tree-node {
@@ -748,10 +766,6 @@ body {
 
 .team-level .tree-node {
     border-top: 3px solid #ffa726;
-}
-
-.individual-level .tree-node {
-    border-top: 3px solid #66bb6a;
 }
 
 /* === Матчинг === */
@@ -799,6 +813,12 @@ body {
 .employee-card.matched {
     border-color: #66bb6a;
     background: #e8f5e9;
+}
+
+.employee-card.assigned {
+    border-color: #0066CC;
+    background: #e8f4fc;
+    box-shadow: 0 2px 8px rgba(0,102,204,0.25);
 }
 
 .employee-avatar {
@@ -1009,6 +1029,39 @@ body {
     border-radius: 4px;
     font-size: 13px;
     color: #333;
+}
+
+.diff-assign-table {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.diff-assign-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid #e0e6ed;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.diff-assign-row.header {
+    font-weight: 700;
+    background: #f7f9fa;
+    color: #555;
+}
+
+.diff-assign-row .old-val {
+    color: #c62828;
+    text-decoration: line-through;
+}
+
+.diff-assign-row .new-val {
+    color: #2e7d32;
+    font-weight: 600;
 }
 
 /* === Редактируемые задачи === */

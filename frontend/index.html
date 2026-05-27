@@ -341,13 +341,6 @@
                                     <div class="tree-level team-level" id="team-level-container">
                                         <!-- dynamic team nodes -->
                                     </div>
-                                    <div class="tree-connector">↓</div>
-                                    <div class="tree-level individual-level">
-                                        <div class="tree-node">
-                                            <span class="node-badge">Сотрудник</span>
-                                            <div id="individual-goal" class="node-text">—</div>
-                                        </div>
-                                    </div>
                                 </div>
 
                                 <button class="btn-primary" onclick="runDecomposeFromSelection()">
@@ -393,12 +386,15 @@
                                 </div>
                             </div>
 
-                            <div style="display: flex; gap: 12px; margin-top: 16px;">
+                            <div style="display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap;">
+                                <button class="btn-primary" onclick="suggestAssignments()">
+                                    <span class="btn-icon">🤖</span> Автораспределение ИИ
+                                </button>
                                 <button class="btn-primary" onclick="saveAssignments()">
                                     <span class="btn-icon">💾</span> Сохранить назначения
                                 </button>
-                                <button class="btn-secondary" onclick="openRollbackModal()">
-                                    ↩️ Откат
+                                <button class="btn-secondary" onclick="rollbackLast()">
+                                    ↩️ Откат к прошлой версии
                                 </button>
                             </div>
 
@@ -444,6 +440,10 @@
                     <div class="diff-label">Key Results от ИИ</div>
                     <ul id="diff-kr-list" class="diff-kr-list"></ul>
                 </div>
+                <div id="diff-assign-section" class="diff-section hidden">
+                    <div class="diff-label">Изменения в назначениях</div>
+                    <div id="diff-assign-table" class="diff-assign-table"></div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn-secondary" onclick="closeDiffModal()">Отклонить</button>
@@ -452,23 +452,7 @@
         </div>
     </div>
 
-    <!-- Rollback Modal -->
-    <div id="rollback-modal" class="modal-overlay hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Откат к предыдущей версии</h3>
-                <button class="modal-close" onclick="closeRollbackModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <label class="field-label">Выберите версию</label>
-                <select id="rollback-version-select" class="field-select"></select>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-secondary" onclick="closeRollbackModal()">Отмена</button>
-                <button class="btn-primary" onclick="confirmRollback()">Откатить</button>
-            </div>
-        </div>
-    </div>
+
 
     <script src="js/app.js?v=4"></script>
 </body>

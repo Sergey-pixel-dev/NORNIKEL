@@ -135,7 +135,6 @@ async function loadGoalDetails(goalId, stepName) {
                 renderDecomposeResult({
                     company: d.company_goal,
                     teams: d.team_goals,
-                    individual: d.individual_goal,
                     reasoning: d.reasoning,
                     traceability_score: d.traceability_score
                 });
@@ -338,7 +337,6 @@ function renderDecomposePanel() {
 
 function clearDecomposeResult() {
     document.getElementById('company-goal').textContent = '—';
-    document.getElementById('individual-goal').textContent = '—';
     document.getElementById('team-level-container').innerHTML = '';
     document.getElementById('decompose-result').classList.add('hidden');
 }
@@ -379,16 +377,15 @@ async function runDecomposeFromSelection() {
 
 function renderDecomposeResult(data) {
     document.getElementById('company-goal').textContent = data.company;
-    document.getElementById('individual-goal').textContent = data.individual || '—';
 
     const container = document.getElementById('team-level-container');
     container.innerHTML = '';
-    (data.teams || []).forEach(t => {
+    (data.teams || []).forEach((t, idx) => {
         const text = (typeof t === 'object') ? (t.text || t.team_name || JSON.stringify(t)) : t;
         const name = (typeof t === 'object') ? (t.team_name || 'Команда') : 'Команда';
         const node = document.createElement('div');
         node.className = 'tree-node';
-        node.innerHTML = `<span class="node-badge">${escapeHtml(name)}</span><div class="node-text">${escapeHtml(text)}</div>`;
+        node.innerHTML = `<span class="node-badge">${escapeHtml(name)}</span><div class="node-text node-text-editable" contenteditable="true" data-index="${idx}">${escapeHtml(text)}</div>`;
         container.appendChild(node);
     });
 
@@ -396,7 +393,6 @@ function renderDecomposeResult(data) {
         const text = (typeof t === 'object') ? (t.text || '') : t;
         return { text, type: 'team' };
     });
-    if (data.individual) appState.currentTasks.push({ text: data.individual, type: 'individual' });
 
     const box = document.getElementById('decompose-result');
     box.className = 'result-box result-info';
@@ -482,13 +478,24 @@ function addEditableTaskRow(taskData) {
 
     row.innerHTML = `
         <input type="text" class="task-text-input" value="${escapeHtml(taskData ? taskData.text : '')}" placeholder="Описание задачи...">
-        <select class="task-assign-select">
+        <select class="task-assign-select" onchange="highlightAssignedEmployees()">
             <option value="">— Не назначен —</option>
             ${empOptions}
         </select>
-        <button class="task-delete" onclick="this.closest('.task-row').remove()" title="Удалить">×</button>
+        <button class="task-delete" onclick="this.closest('.task-row').remove(); highlightAssignedEmployees();" title="Удалить">×</button>
     `;
     container.appendChild(row);
+    highlightAssignedEmployees();
+}
+
+function highlightAssignedEmployees() {
+    const selects = document.querySelectorAll('#tasks-list-editable .task-assign-select');
+    const assignedIds = new Set();
+    selects.forEach(s => { if (s.value) assignedIds.add(s.value); });
+
+    document.querySelectorAll('.employee-card').forEach(card => {
+        card.classList.toggle('assigned', assignedIds.has(card.dataset.id));
+    });
 }
 
 function addTask() {
@@ -508,6 +515,84 @@ async function loadTasksFromDecomposition() {
     } catch (e) {
         alert('Ошибка генерации задач: ' + e.message);
     }
+}
+
+// === AI Suggest Assignments ===
+appState.pendingSuggestions = null;
+
+async function suggestAssignments() {
+    if (!appState.currentGoalId) {
+        alert('Выберите цель');
+        return;
+    }
+    try {
+        const res = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/suggest-assignments`, { method: 'POST' });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        appState.pendingSuggestions = data.suggestions || [];
+
+        // Показываем diff
+        showAssignmentDiff(data.suggestions);
+    } catch (e) {
+        alert('Ошибка авторспределения: ' + e.message);
+    }
+}
+
+function showAssignmentDiff(suggestions) {
+    // Текущие назначения
+    const rows = document.querySelectorAll('#tasks-list-editable .task-row');
+    const current = {};
+    rows.forEach(r => {
+        const taskId = r.dataset.taskId;
+        const empId = r.querySelector('.task-assign-select').value;
+        const empName = empId ? r.querySelector('.task-assign-select option:checked').textContent : '—';
+        current[taskId] = empName;
+    });
+
+    // Формируем таблицу diff
+    let html = '<div class="diff-assign-row header"><div>Задача</div><div>Текущий</div><div>Предложение ИИ</div></div>';
+    suggestions.forEach(s => {
+        const oldVal = current[s.task_id] || '—';
+        const newVal = s.employee_name || '—';
+        html += `<div class="diff-assign-row">
+            <div>${escapeHtml(s.task_text.substring(0, 40))}${s.task_text.length > 40 ? '…' : ''}</div>
+            <div class="old-val">${escapeHtml(oldVal)}</div>
+            <div class="new-val">${escapeHtml(newVal)}</div>
+        </div>`;
+    });
+
+    document.getElementById('diff-old').textContent = '';
+    document.getElementById('diff-new').textContent = '';
+    document.getElementById('diff-kr-section').classList.add('hidden');
+    document.getElementById('diff-assign-section').classList.remove('hidden');
+    document.getElementById('diff-assign-table').innerHTML = html;
+
+    // Меняем заголовок и обработчик кнопки Принять
+    document.querySelector('#diff-modal .modal-header h3').textContent = 'ИИ предлагает назначения';
+    const acceptBtn = document.querySelector('#diff-modal .modal-footer .btn-primary');
+    acceptBtn.onclick = applySuggestedAssignments;
+    acceptBtn.textContent = 'Принять назначения';
+
+    document.getElementById('diff-modal').classList.remove('hidden');
+}
+
+function applySuggestedAssignments() {
+    if (!appState.pendingSuggestions) {
+        closeDiffModal();
+        return;
+    }
+    appState.pendingSuggestions.forEach(s => {
+        const row = document.querySelector(`.task-row[data-task-id="${s.task_id}"]`);
+        if (row) {
+            const select = row.querySelector('.task-assign-select');
+            if (select && s.employee_id) {
+                select.value = s.employee_id;
+            }
+        }
+    });
+    highlightAssignedEmployees();
+    appState.pendingSuggestions = null;
+    closeDiffModal();
 }
 
 async function saveAssignments() {
@@ -578,51 +663,43 @@ function showMatchResult(message) {
 }
 
 // === Rollback ===
-async function openRollbackModal() {
+async function rollbackLast() {
     if (!appState.currentGoalId) {
         alert('Выберите цель');
         return;
     }
-    const select = document.getElementById('rollback-version-select');
-    select.innerHTML = '<option value="">Загрузка...</option>';
-    document.getElementById('rollback-modal').classList.remove('hidden');
     try {
         const res = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/versions`);
         const versions = await res.json();
-        select.innerHTML = '';
-        versions.forEach(v => {
-            const opt = document.createElement('option');
-            opt.value = v.id;
-            opt.textContent = `${v.step} — ${new Date(v.created_at).toLocaleString()}`;
-            select.appendChild(opt);
-        });
-    } catch (e) {
-        select.innerHTML = '<option value="">Ошибка загрузки</option>';
-    }
-}
-
-function closeRollbackModal() {
-    document.getElementById('rollback-modal').classList.add('hidden');
-}
-
-async function confirmRollback() {
-    const select = document.getElementById('rollback-version-select');
-    const versionId = select.value;
-    if (!versionId) { alert('Выберите версию'); return; }
-    try {
-        const res = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/rollback`, {
+        if (!versions || versions.length < 2) {
+            alert('Нет предыдущей версии для отката');
+            return;
+        }
+        // Берём предпоследнюю версию (последняя — текущее состояние)
+        const target = versions[1];
+        const rollbackRes = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/rollback`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ version_id: versionId })
+            body: JSON.stringify({ version_id: target.id })
         });
-        if (!res.ok) throw new Error(await res.text());
-        alert('Откат выполнен');
-        closeRollbackModal();
-        // Перезагружаем данные цели
-        loadGoalDetails(appState.currentGoalId, 'validate');
+        if (!rollbackRes.ok) throw new Error(await rollbackRes.text());
+        alert('Откат к прошлой версии выполнен');
+        loadGoalDetails(appState.currentGoalId, 'match');
     } catch (e) {
         alert('Ошибка отката: ' + e.message);
     }
+}
+
+function closeDiffModal() {
+    document.getElementById('diff-modal').classList.add('hidden');
+    appState.diffPayload = null;
+    appState.pendingSuggestions = null;
+    // Восстанавливаем стандартный обработчик
+    const acceptBtn = document.querySelector('#diff-modal .modal-footer .btn-primary');
+    acceptBtn.onclick = acceptDiff;
+    acceptBtn.textContent = 'Принять изменения';
+    document.querySelector('#diff-modal .modal-header h3').textContent = 'ИИ предлагает изменения';
+    document.getElementById('diff-assign-section').classList.add('hidden');
 }
 
 // === Инициализация ===
