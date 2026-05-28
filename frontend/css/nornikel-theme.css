@@ -1067,7 +1067,7 @@ body {
 /* === Редактируемые задачи === */
 .task-row {
     display: grid;
-    grid-template-columns: 1fr 140px 36px;
+    grid-template-columns: auto 1fr 140px 36px;
     gap: 10px;
     align-items: center;
     padding: 10px 12px;

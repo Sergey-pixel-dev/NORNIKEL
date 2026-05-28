@@ -98,3 +98,51 @@ async def suggest_assignments(db: AsyncSession, goal_id: UUID, tasks: List[dict]
                 "reason": a.reason,
             })
         return suggestions
+
+
+class BreakdownResult:
+    def __init__(self, subtasks: List[str], reasoning: str):
+        self.subtasks = subtasks
+        self.reasoning = reasoning
+
+
+async def breakdown_team_task(
+    db: AsyncSession,
+    goal_id: UUID,
+    team_name: str,
+    team_task: str,
+    specialization: str,
+    goal_desc: str,
+    employees: List[dict],
+) -> BreakdownResult:
+    goal = await get_goal(db, goal_id)
+    if not goal:
+        raise ValueError("Цель не найдена")
+
+    history = _history_from_goal(goal)
+    try:
+        result = await asyncio.wait_for(
+            ollama_client.breakdown_team_task_llm(
+                history, team_name, team_task, specialization, goal_desc, employees
+            ),
+            timeout=35,
+        )
+        await append_chat_message(
+            db, goal_id, "user",
+            f"Разбей задачу команды '{team_name}' на подзадачи: {team_task}"
+        )
+        await append_chat_message(
+            db, goal_id, "assistant",
+            f"Подзадачи:\n" + "\n".join([f"{i+1}. {s}" for i, s in enumerate(result['subtasks'])])
+            + f"\nОбоснование: {result['reasoning']}"
+        )
+        return BreakdownResult(subtasks=result["subtasks"], reasoning=result["reasoning"])
+    except Exception as e:
+        print(f"[AI] LLM breakdown failed ({e}), using mock")
+        # Fallback mock
+        fallback = [
+            f"Анализ требований для задачи '{team_task}'",
+            f"Разработка MVP с использованием {specialization}",
+            f"Тестирование и документирование результатов",
+        ]
+        return BreakdownResult(subtasks=fallback, reasoning="Mock fallback breakdown")

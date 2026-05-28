@@ -9,6 +9,10 @@ const appState = {
     teams: [],
     employees: [],
     diffPayload: null, // для хранения предложения ИИ
+    currentDecomposition: null, // текущая декомпозиция для diff
+    breakdownTeamId: null,
+    subtaskTeamMap: {}, // task_id -> team_id
+    pendingDecomposeData: null,
 };
 
 // === API URL ===
@@ -119,6 +123,7 @@ async function loadGoalDetails(goalId, stepName) {
         const response = await fetch(`${API_URL}/api/goals/${goalId}`);
         const goal = await response.json();
 
+        appState.currentGoalData = goal;
         appState.currentGoal = goal.description;
         appState.currentTitle = goal.title;
         appState.validated = true;
@@ -153,11 +158,16 @@ async function loadGoalDetails(goalId, stepName) {
         }
 
         if (stepName === 'match') {
-            // Загружаем задачи цели
-            if (goal.tasks && goal.tasks.length > 0) {
-                renderEditableTasks(goal.tasks);
+            // Сохраняем задачи цели
+            appState.currentGoalTasks = goal.tasks || [];
+            populateMatchTeamSelect(goal);
+            // Если команда уже выбрана — фильтруем
+            const teamSelect = document.getElementById('match-team-select');
+            if (teamSelect && teamSelect.value) {
+                onMatchTeamChange();
             } else {
                 document.getElementById('tasks-list-editable').innerHTML = '';
+                document.getElementById('employees-grid').innerHTML = '';
             }
         }
     } catch (e) {
@@ -369,6 +379,15 @@ function clearDecomposeResult() {
     document.getElementById('decompose-result').classList.add('hidden');
 }
 
+function collectCurrentTeamTexts() {
+    const nodes = document.querySelectorAll('#team-level-container .node-text-editable');
+    const texts = [];
+    nodes.forEach(n => {
+        texts.push({ team_name: n.previousElementSibling ? n.previousElementSibling.textContent : 'Команда', text: n.textContent.trim() });
+    });
+    return texts;
+}
+
 async function runDecomposeFromSelection() {
     if (!appState.currentGoalId) {
         alert('Выберите цель из списка');
@@ -379,6 +398,14 @@ async function runDecomposeFromSelection() {
         alert('Цель пуста');
         return;
     }
+
+    // Если уже есть декомпозиция, собираем текущие тексты для diff
+    const hasExisting = document.querySelectorAll('#team-level-container .node-text-editable').length > 0;
+    let oldTeams = null;
+    if (hasExisting) {
+        oldTeams = collectCurrentTeamTexts();
+    }
+
     appState.decomposed = true;
     document.getElementById('source-goal-text').textContent = goalText;
     document.getElementById('decompose-result').classList.remove('hidden');
@@ -390,6 +417,14 @@ async function runDecomposeFromSelection() {
             headers: { 'Content-Type': 'application/json' }
         });
         const data = await response.json();
+
+        if (oldTeams && oldTeams.length > 0) {
+            appState.pendingDecomposeData = data;
+            showDecomposeDiff(oldTeams, data);
+            document.getElementById('decompose-result').innerHTML = '';
+            return;
+        }
+
         renderDecomposeResult({
             company: data.company,
             teams: data.teams,
@@ -405,6 +440,7 @@ async function runDecomposeFromSelection() {
 
 function renderDecomposeResult(data) {
     document.getElementById('company-goal').textContent = data.company;
+    appState.currentDecomposition = data;
 
     const container = document.getElementById('team-level-container');
     container.innerHTML = '';
@@ -434,10 +470,57 @@ function renderDecomposeResult(data) {
             </button>
         </div>
     `;
+
 }
 
 function goToMatch() {
     activateStep('match');
+}
+
+function showDecomposeDiff(oldTeams, newData) {
+    let html = '<div class="diff-assign-row header"><div>Команда</div><div>Текущая версия</div><div>Новая версия</div></div>';
+    const newTeams = newData.teams || [];
+    const maxLen = Math.max(oldTeams.length, newTeams.length);
+    for (let i = 0; i < maxLen; i++) {
+        const oldT = oldTeams[i] || { team_name: '—', text: '—' };
+        const newT = newTeams[i] || { team_name: '—', text: '—' };
+        const newText = (typeof newT === 'object') ? (newT.text || '') : newT;
+        const oldText = oldT.text || '—';
+        html += `<div class="diff-assign-row">
+            <div><strong>${escapeHtml(oldT.team_name)}</strong></div>
+            <div class="old-val">${escapeHtml(oldText)}</div>
+            <div class="new-val">${escapeHtml(newText)}</div>
+        </div>`;
+    }
+
+    document.getElementById('diff-old').textContent = '';
+    document.getElementById('diff-new').textContent = '';
+    document.getElementById('diff-kr-section').classList.add('hidden');
+    document.getElementById('diff-assign-section').classList.remove('hidden');
+    document.getElementById('diff-assign-table').innerHTML = html;
+
+    document.querySelector('#diff-modal .modal-header h3').textContent = 'ИИ предлагает новую декомпозицию';
+    const acceptBtn = document.querySelector('#diff-modal .modal-footer .btn-primary');
+    acceptBtn.onclick = applyDecomposeDiff;
+    acceptBtn.textContent = 'Принять новую декомпозицию';
+    document.getElementById('diff-modal').classList.remove('hidden');
+}
+
+function applyDecomposeDiff() {
+    if (!appState.pendingDecomposeData) {
+        closeDiffModal();
+        return;
+    }
+    const data = appState.pendingDecomposeData;
+    renderDecomposeResult({
+        company: data.company,
+        teams: data.teams,
+        individual: data.individual,
+        reasoning: data.reasoning,
+        traceability_score: data.traceability_score
+    });
+    appState.pendingDecomposeData = null;
+    closeDiffModal();
 }
 
 // === Матчинг (ручное распределение) ===
@@ -480,8 +563,216 @@ function renderEmployeeCards() {
     });
 }
 
+function populateMatchTeamSelect(goal) {
+    const select = document.getElementById('match-team-select');
+    if (!select) return;
+    select.innerHTML = '<option value="">-- Выберите команду --</option>';
+
+    // Берём команды из декомпозиции
+    const decomps = goal.decompositions || [];
+    if (decomps.length === 0) return;
+    const teams = decomps[decomps.length - 1].team_goals || [];
+
+    teams.forEach((t, idx) => {
+        const name = (typeof t === 'object') ? (t.team_name || 'Команда') : 'Команда';
+        const teamId = appState.teams[idx] ? appState.teams[idx].id : '';
+        if (teamId) {
+            select.innerHTML += `<option value="${teamId}">${escapeHtml(name)}</option>`;
+        }
+    });
+}
+
+async function onMatchTeamChange() {
+    const select = document.getElementById('match-team-select');
+    const teamId = select ? select.value : '';
+    const taskSection = document.getElementById('team-task-section');
+
+    if (!teamId) {
+        document.getElementById('employees-grid').innerHTML = '';
+        document.getElementById('tasks-list-editable').innerHTML = '';
+        if (taskSection) taskSection.style.display = 'none';
+        return;
+    }
+
+    // Показываем секцию задачи команды
+    if (taskSection) taskSection.style.display = 'block';
+
+    // Находим задачу команды из декомпозиции
+    const goal = appState.currentGoalData;
+    let teamTaskText = '';
+    let teamName = '';
+    if (goal && goal.decompositions && goal.decompositions.length > 0) {
+        const decomp = goal.decompositions[goal.decompositions.length - 1];
+        const teamGoals = decomp.team_goals || [];
+        // Ищем по team_id через appState.teams
+        const teamIdx = appState.teams.findIndex(t => t.id === teamId);
+        if (teamIdx >= 0 && teamGoals[teamIdx]) {
+            const tg = teamGoals[teamIdx];
+            teamTaskText = (typeof tg === 'object') ? (tg.text || '') : tg;
+            teamName = (typeof tg === 'object') ? (tg.team_name || '') : '';
+        }
+    }
+
+    document.getElementById('team-task-display').textContent = teamTaskText || '—';
+    appState.currentTeamTask = teamTaskText;
+    appState.currentTeamName = teamName;
+    appState.currentMatchTeamId = teamId;
+
+    // Обновляем кнопку
+    const existingTasks = (appState.currentGoalTasks || []).filter(t => t.team_id === teamId);
+    const btn = document.getElementById('btn-breakdown-team');
+    if (existingTasks.length > 0) {
+        btn.textContent = 'Перегенерировать подзадачи';
+    } else {
+        btn.textContent = 'Разбить на подзадачи';
+    }
+
+    // Загружаем сотрудников команды
+    try {
+        const res = await fetch(`${API_URL}/api/teams/${teamId}/employees`);
+        const emps = await res.json();
+        appState.currentMatchEmployees = emps;
+        renderEmployeeCardsForMatch(emps);
+    } catch (e) {
+        console.error('Ошибка загрузки сотрудников команды:', e);
+    }
+
+    // Показываем существующие подзадачи
+    renderEditableTasks(existingTasks);
+}
+
+async function runBreakdownForTeam() {
+    const teamId = appState.currentMatchTeamId;
+    const teamName = appState.currentTeamName;
+    const taskText = appState.currentTeamTask;
+    if (!teamId || !taskText) {
+        alert('Выберите команду с задачей');
+        return;
+    }
+
+    const teamObj = appState.teams.find(t => t.id === teamId);
+    const specialization = teamObj ? teamObj.specialization : '';
+
+    // Собираем текущие subtask'и для diff
+    const existingTasks = (appState.currentGoalTasks || []).filter(t => t.team_id === teamId);
+    const oldSubtasks = existingTasks.map(t => t.text);
+
+    const btn = document.getElementById('btn-breakdown-team');
+    const loading = document.getElementById('breakdown-loading');
+    btn.style.display = 'none';
+    loading.style.display = 'block';
+
+    try {
+        const res = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/breakdown-team`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ team_id: teamId, team_name: teamName, team_task: taskText, specialization })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+
+        if (oldSubtasks.length > 0) {
+            // Показываем diff
+            appState.pendingBreakdownData = data;
+            showBreakdownDiff(oldSubtasks, data.subtasks);
+        } else {
+            // Сразу применяем
+            await applyBreakdownResult(data);
+        }
+    } catch (e) {
+        alert('Ошибка разбиения: ' + e.message);
+    } finally {
+        btn.style.display = 'inline-block';
+        loading.style.display = 'none';
+    }
+}
+
+function showBreakdownDiff(oldSubtasks, newSubtasks) {
+    let html = '<div class="diff-assign-row header"><div>№</div><div>Текущая версия</div><div>Новая версия</div></div>';
+    const maxLen = Math.max(oldSubtasks.length, newSubtasks.length);
+    for (let i = 0; i < maxLen; i++) {
+        const oldT = oldSubtasks[i] || '—';
+        const newT = newSubtasks[i] || '—';
+        html += `<div class="diff-assign-row">
+            <div><strong>${i + 1}</strong></div>
+            <div class="old-val">${escapeHtml(oldT)}</div>
+            <div class="new-val">${escapeHtml(newT)}</div>
+        </div>`;
+    }
+
+    document.getElementById('diff-old').textContent = '';
+    document.getElementById('diff-new').textContent = '';
+    document.getElementById('diff-kr-section').classList.add('hidden');
+    document.getElementById('diff-assign-section').classList.remove('hidden');
+    document.getElementById('diff-assign-table').innerHTML = html;
+
+    document.querySelector('#diff-modal .modal-header h3').textContent = 'ИИ предлагает новую разбивку';
+    const acceptBtn = document.querySelector('#diff-modal .modal-footer .btn-primary');
+    acceptBtn.onclick = acceptBreakdownDiff;
+    acceptBtn.textContent = 'Принять новую разбивку';
+    document.getElementById('diff-modal').classList.remove('hidden');
+}
+
+async function acceptBreakdownDiff() {
+    if (!appState.pendingBreakdownData) {
+        closeDiffModal();
+        return;
+    }
+    await applyBreakdownResult(appState.pendingBreakdownData);
+    appState.pendingBreakdownData = null;
+    closeDiffModal();
+}
+
+async function applyBreakdownResult(data) {
+    // Обновляем currentGoalTasks
+    await loadGoalDetails(appState.currentGoalId, 'match');
+    // Выбираем ту же команду
+    const select = document.getElementById('match-team-select');
+    if (select && appState.currentMatchTeamId) {
+        select.value = appState.currentMatchTeamId;
+        onMatchTeamChange();
+    }
+}
+
+function renderEmployeeCardsForMatch(employees) {
+    const grid = document.getElementById('employees-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    employees.forEach(e => {
+        const card = document.createElement('div');
+        card.className = 'employee-card';
+        card.dataset.id = e.id;
+        const initials = e.name.split(' ').map(p => p[0]).join('').substring(0, 2);
+        const skills = (e.skills || []).map(s => `<span class="skill-tag hard">${escapeHtml(s)}</span>`).join('');
+        const projects = (e.projects_history || []).map(p => `<li style="font-size:11px;color:#666;margin-top:2px;">• ${escapeHtml(p)}</li>`).join('');
+        card.innerHTML = `
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div class="employee-avatar">${initials}</div>
+                <div class="employee-info">
+                    <strong>${escapeHtml(e.name)}</strong>
+                    <span>${escapeHtml(e.role)}</span>
+                </div>
+            </div>
+            <div class="employee-skills">${skills}</div>
+            <div style="margin-top:4px;">
+                <div style="font-size:11px;color:#888;font-weight:600;">Проекты:</div>
+                <ul style="padding-left:14px;margin:4px 0 0 0;">${projects || '<li style="font-size:11px;color:#999;">—</li>'}</ul>
+            </div>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+async function reloadTeamTasks() {
+    if (!appState.currentGoalId) {
+        alert('Сначала выберите цель');
+        return;
+    }
+    await loadGoalDetails(appState.currentGoalId, 'match');
+    onMatchTeamChange();
+}
+
 function renderMatchPanel() {
-    loadEmployees();
     if (appState.currentGoalId) {
         loadGoalDetails(appState.currentGoalId, 'match');
     }
@@ -500,11 +791,17 @@ function addEditableTaskRow(taskData) {
     row.className = 'task-row';
     row.dataset.taskId = taskData ? taskData.id : '';
 
-    const empOptions = appState.employees.map(e =>
+    // Используем текущих сотрудников команды (если на match-панели) или всех
+    let allowedEmployees = appState.currentMatchEmployees || appState.employees;
+
+    const empOptions = allowedEmployees.map(e =>
         `<option value="${e.id}" ${taskData && taskData.assigned_employee_id === e.id ? 'selected' : ''}>${escapeHtml(e.name)}</option>`
     ).join('');
 
+    const typeLabel = taskData && taskData.type ? `<span class="task-type-label" style="font-size:11px;color:#64748b;background:#f1f5f9;padding:2px 6px;border-radius:4px;margin-right:6px;">${taskData.type}</span>` : '';
+
     row.innerHTML = `
+        ${typeLabel}
         <input type="text" class="task-text-input" value="${escapeHtml(taskData ? taskData.text : '')}" placeholder="Описание задачи...">
         <select class="task-assign-select" onchange="highlightAssignedEmployees()">
             <option value="">— Не назначен —</option>
@@ -528,21 +825,6 @@ function highlightAssignedEmployees() {
 
 function addTask() {
     addEditableTaskRow(null);
-}
-
-async function loadTasksFromDecomposition() {
-    if (!appState.currentGoalId) {
-        alert('Сначала выберите цель и выполните декомпозицию');
-        return;
-    }
-    try {
-        const res = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/generate-tasks`, { method: 'POST' });
-        if (!res.ok) throw new Error(await res.text());
-        const tasks = await res.json();
-        renderEditableTasks(tasks);
-    } catch (e) {
-        alert('Ошибка генерации задач: ' + e.message);
-    }
 }
 
 // === AI Suggest Assignments ===
@@ -722,6 +1004,7 @@ function closeDiffModal() {
     document.getElementById('diff-modal').classList.add('hidden');
     appState.diffPayload = null;
     appState.pendingSuggestions = null;
+    appState.pendingBreakdownData = null;
     // Восстанавливаем стандартный обработчик
     const acceptBtn = document.querySelector('#diff-modal .modal-footer .btn-primary');
     acceptBtn.onclick = acceptDiff;

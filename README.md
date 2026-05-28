@@ -6,38 +6,53 @@
 
 ```
 ai-agent/
-├── backend/                 # FastAPI + Python
+├── backend/                 # FastAPI + SQLAlchemy async + PostgreSQL
 │   ├── app/
 │   │   ├── agent/           # Логика ИИ-агента
-│   │   │   ├── validator.py # Валидация целей (SMART)
-│   │   │   ├── decomposer.py# Декомпозиция по уровням
-│   │   │   └── matcher.py   # Матчинг сотрудников ↔ задачи
+│   │   │   ├── validator.py         # Валидация целей (SMART)
+│   │   │   ├── decomposer.py        # Декомпозиция по уровням
+│   │   │   ├── matcher.py           # Матчинг сотрудников ↔ задачи
+│   │   │   ├── ollama_client.py     # HTTP-клиент для Ollama
+│   │   │   ├── ai_service.py        # Единый AI-сервис с fallback
+│   │   │   ├── ai_mock.py           # Mock-реализации при недоступности LLM
+│   │   │   ├── title_generator.py   # Генерация заголовков
+│   │   │   └── document_parser.py   # Извлечение текста из PDF/DOCX
 │   │   ├── api/
 │   │   │   └── routes.py    # REST API endpoints
-│   │   ├── models.py        # Pydantic модели
+│   │   ├── crud/
+│   │   │   └── goals.py     # CRUD операции
+│   │   ├── db/
+│   │   │   ├── models.py    # SQLAlchemy модели
+│   │   │   ├── database.py  # Подключение к PostgreSQL
+│   │   │   └── seed.py      # Сид-данные
+│   │   ├── schemas.py       # Pydantic модели
 │   │   └── main.py          # Точка входа FastAPI
+│   ├── alembic/             # Миграции
 │   ├── Dockerfile
-│   ├── .dockerignore
 │   └── requirements.txt
-├── frontend/                # Заглушка интерфейса Норникеля
+├── frontend/                # Vanilla JS + CSS, Nginx
 │   ├── index.html
 │   ├── css/
 │   │   └── nornikel-theme.css
 │   ├── js/
 │   │   └── app.js
 │   ├── Dockerfile
-│   ├── .dockerignore
 │   └── nginx.conf
 ├── docker-compose.yml
-├── .gitignore
+├── Makefile
 └── README.md
 ```
 
 ## Возможности
 
-1. **Валидация целей** — проверка на SMART, отсутствие расплывчатых формулировок, наличие Key Results
-2. **Декомпозиция** — разбивка цели компании → команды → индивидуальные задачи
-3. **Матчинг** — назначение задач сотрудникам на основе hard/soft skills
+1. **Валидация целей** — проверка на SMART, оценка по 6 критериям, рекомендации
+2. **AI-переписывание** — LLM переписывает цель в формат SMART и генерирует Key Results
+3. **Декомпозиция** — разбивка цели компании → задачи команд (динамическое число команд из БД)
+4. **Team Breakdown** — разбиение задачи одной команды на 3–5 конкретных подзадач с технологиями
+5. **Матчинг** — ручное и ИИ-распределение задач по сотрудникам с учётом навыков
+6. **Версионирование** — автоматические снапшоты на каждом шаге, откат к предыдущей версии
+7. **Контекстный чат** — история сообщений с LLM сохраняется в БД, можно сбросить
+8. **Загрузка документов** — извлечение текста из PDF/DOCX для дальнейшей обработки
 
 ## Запуск через Docker
 
@@ -45,6 +60,7 @@ ai-agent/
 
 - Docker 20.10+
 - Docker Compose 2.0+
+- Ollama с моделью `phi4-mini:latest` (или настройте `OLLAMA_MODEL`)
 
 ### Быстрый старт
 
@@ -52,9 +68,6 @@ ai-agent/
 cd ai-agent
 
 # Собрать и запустить
-docker compose up --build
-
-# Или в фоне
 docker compose up --build -d
 ```
 
@@ -72,7 +85,7 @@ docker compose up --build -d
 # Остановить контейнеры
 docker compose down
 
-# Остановить и удалить volumes
+# Остановить и удалить volumes (вместе с данными БД)
 docker compose down -v
 ```
 
@@ -81,12 +94,6 @@ docker compose down -v
 ```bash
 # Полная пересборка
 docker compose up --build --force-recreate
-
-# Пересборка только backend
-docker compose up --build backend
-
-# Пересборка только frontend
-docker compose up --build frontend
 ```
 
 ### Просмотр логов
@@ -97,63 +104,36 @@ docker compose logs -f
 
 # Только backend
 docker compose logs -f backend
-
-# Только frontend
-docker compose logs -f frontend
 ```
 
 ## API Endpoints
 
 | Метод | Endpoint | Описание |
 |-------|----------|----------|
-| POST | `/api/validate` | Проверить цель на SMART |
-| POST | `/api/decompose` | Декомпозировать цель |
-| POST | `/api/match` | Подобрать исполнителей |
-
-### Примеры запросов
-
-**Валидация цели:**
-```bash
-curl -X POST http://localhost:8000/api/validate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "goal": "Сократить время обработки заказов на 20% до конца Q3 2025",
-    "key_results": [
-      "Внедрить автоматизацию 3 процессов",
-      "Снизить ошибки в заказах до 1%"
-    ]
-  }'
-```
-
-**Декомпозиция:**
-```bash
-curl -X POST http://localhost:8000/api/decompose \
-  -H "Content-Type: application/json" \
-  -d '{"goal": "Цифровизация процесса учёта сырья"}'
-```
-
-**Матчинг:**
-```bash
-curl -X POST http://localhost:8000/api/match \
-  -H "Content-Type: application/json" \
-  -d '{
-    "tasks": [
-      {"text": "Разработка модели", "type": "ML"},
-      {"text": "Создание интерфейса", "type": "Frontend"}
-    ],
-    "employees": [
-      {"name": "Иванов", "role": "DS", "skills": ["python", "ml"]},
-      {"name": "Петров", "role": "Dev", "skills": ["react", "js"]}
-    ]
-  }'
-```
+| POST | `/api/validate` | Проверить цель на SMART, создать цель в БД |
+| POST | `/api/ai-rewrite` | Переписать цель при помощи ИИ |
+| POST | `/api/upload-document` | Загрузить PDF/DOCX, извлечь текст |
+| GET | `/api/goals` | Список целей |
+| GET | `/api/goals/{id}` | Детали цели (с декомпозициями, задачами, версиями) |
+| POST | `/api/goals/{id}/decompose` | Декомпозировать цель на команды |
+| POST | `/api/goals/{id}/generate-tasks` | Сгенерировать задачи из декомпозиции |
+| POST | `/api/goals/{id}/breakdown-team` | Разбить задачу команды на подзадачи |
+| POST | `/api/goals/{id}/suggest-assignments` | ИИ предлагает назначения |
+| POST | `/api/goals/{id}/assign` | Сохранить назначения |
+| POST | `/api/goals/{id}/rollback` | Откат к версии |
+| POST | `/api/goals/{id}/reset-chat` | Очистить контекст ИИ |
+| GET | `/api/teams` | Список команд |
+| GET | `/api/employees` | Список сотрудников |
+| GET | `/api/teams/{id}/employees` | Сотрудники конкретной команды |
+| GET | `/api/goals/{id}/tasks` | Задачи цели |
+| POST/PUT/DELETE | `/api/tasks` | CRUD задач |
 
 ## Архитектура
 
 ```
 ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-│   Пользователь   │─────▶│  Frontend   │─────▶│   Backend   │
-│  (браузер)       │      │  (nginx)    │      │  (FastAPI)  │
+│ Пользователь │─────▶│  Frontend   │─────▶│   Backend   │
+│  (браузер)   │      │  (nginx)    │      │  (FastAPI)  │
 └─────────────┘      └─────────────┘      └─────────────┘
                                                 │
                     ┌───────────────────────────┼───────────┐
@@ -162,38 +142,18 @@ curl -X POST http://localhost:8000/api/match \
               │Validator │            │Decomposer  │  │Matcher     │
               │(SMART)   │            │(каскад)    │  │(skills)    │
               └──────────┘            └────────────┘  └────────────┘
-```
-
-## Интеграция с Qwen (будущее)
-
-В текущей версии логика агента реализована на правилах (rule-based). Для подключения Qwen:
-
-1. Добавить в `backend/requirements.txt`:
-   ```
-   openai>=1.0
-   # или
-   transformers>=4.35
-   ```
-
-2. В `backend/app/agent/` создать модуль `llm_client.py` для вызовов Qwen
-
-3. Заменить rule-based логику в `validator.py`, `decomposer.py`, `matcher.py` на LLM-промпты
-
-Пример промпта для валидации:
-```
-Ты — эксперт по OKR в крупной металлургической компании.
-Проверь следующую цель на соответствие критериям SMART.
-Укажи конкретные проблемы и дай рекомендации по улучшению.
-
-Цель: {goal}
-Key Results: {key_results}
+                    │
+                    ▼
+              ┌─────────────────────────────────────┐
+              │  Ollama (phi4-mini:latest)          │
+              │  host.docker.internal:11434          │
+              └─────────────────────────────────────┘
 ```
 
 ## Git
 
 ```bash
 # Просмотр истории
-cd ai-agent
 git log --oneline
 
 # Статус

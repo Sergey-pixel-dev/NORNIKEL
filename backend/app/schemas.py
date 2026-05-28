@@ -65,6 +65,7 @@ class EmployeeRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    team_id: Optional[UUID]
     name: str
     role: str
     skills: List[str]
@@ -76,6 +77,7 @@ class TaskRead(BaseModel):
 
     id: UUID
     goal_id: UUID
+    team_id: Optional[UUID]
     text: str
     type: str
     assigned_employee_id: Optional[UUID]
@@ -85,6 +87,7 @@ class TaskRead(BaseModel):
 
 class TaskCreate(BaseModel):
     goal_id: UUID
+    team_id: Optional[UUID] = None
     text: str
     type: str = "general"
     order: int = 0
@@ -92,6 +95,7 @@ class TaskCreate(BaseModel):
 
 class TaskUpdate(BaseModel):
     text: Optional[str] = None
+    team_id: Optional[UUID] = None
     type: Optional[str] = None
     assigned_employee_id: Optional[UUID] = None
     order: Optional[int] = None

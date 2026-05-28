@@ -159,11 +159,19 @@ async def get_employee(db: AsyncSession, employee_id: UUID) -> Optional[Employee
     return result.scalar_one_or_none()
 
 
+async def get_employees_by_team(db: AsyncSession, team_id: UUID) -> List[Employee]:
+    result = await db.execute(
+        select(Employee).where(Employee.team_id == team_id).order_by(Employee.name)
+    )
+    return result.scalars().all()
+
+
 # --- Tasks ---
 
 async def create_task(db: AsyncSession, data: TaskCreate) -> Task:
     task = Task(
         goal_id=data.goal_id,
+        team_id=data.team_id,
         text=data.text,
         type=data.type,
         order=data.order,

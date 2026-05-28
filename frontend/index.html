@@ -369,8 +369,22 @@
                                 </select>
                             </div>
 
+                            <div class="input-group">
+                                <label class="field-label">Команда</label>
+                                <select id="match-team-select" class="field-select" onchange="onMatchTeamChange()" style="margin-bottom: 12px;">
+                                    <option value="">-- Выберите команду --</option>
+                                </select>
+                            </div>
+
+                            <div id="team-task-section" style="display:none; margin-bottom: 16px; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                                <div style="font-weight: 600; margin-bottom: 8px; font-size: 14px;">Задача команды</div>
+                                <div id="team-task-display" style="font-size: 13px; color: #334155; margin-bottom: 10px;"></div>
+                                <button id="btn-breakdown-team" class="btn-primary" onclick="runBreakdownForTeam()">Разбить на подзадачи</button>
+                                <div id="breakdown-loading" style="display:none;" class="loading-text">Разбиваем на подзадачи...</div>
+                            </div>
+
                             <div class="teams-section">
-                                <h4 class="section-subtitle">Сотрудники</h4>
+                                <h4 class="section-subtitle">Сотрудники команды</h4>
                                 <div id="employees-grid" class="employees-grid">
                                     <!-- dynamic employee cards -->
                                 </div>
@@ -378,10 +392,10 @@
 
                             <div class="task-assignment">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                                    <h4 class="section-subtitle" style="margin: 0;">Задачи для распределения</h4>
+                                    <h4 class="section-subtitle" style="margin: 0;">Подзадачи команды</h4>
                                     <div style="display: flex; gap: 8px;">
                                         <button class="btn-add" onclick="addTask()">+ Добавить задачу</button>
-                                        <button class="btn-secondary" onclick="loadTasksFromDecomposition()">🔄 Загрузить из декомпозиции</button>
+                                        <button class="btn-secondary" onclick="reloadTeamTasks()">🔄 Обновить список</button>
                                     </div>
                                 </div>
                                 <div id="tasks-list-editable" class="tasks-list">

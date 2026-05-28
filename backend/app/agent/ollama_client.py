@@ -171,3 +171,50 @@ def _parse_assignments(raw: str, tasks: List[dict], employees: List[dict]) -> Li
         })
 
     return suggestions
+
+
+async def breakdown_team_task_llm(
+    history: List[dict],
+    team_name: str,
+    team_task: str,
+    specialization: str,
+    goal_desc: str,
+    employees: List[dict],
+) -> dict:
+    emps_text = "\n".join([f"- {e['name']} ({e['role']}): {', '.join(e.get('skills', []))}" for e in employees])
+    prompt = (
+        f"Разбей командную задачу на 3-5 конкретных подзадач с указанием технологий, языков программирования или инструментов. "
+        f"Учитывай специализацию команды и её сотрудников.\n\n"
+        f"Общая цель: {goal_desc}\n"
+        f"Команда: {team_name}\n"
+        f"Специализация команды: {specialization}\n"
+        f"Командная задача: {team_task}\n\n"
+        f"Сотрудники команды:\n{emps_text}\n\n"
+        f"Ответь строго в формате (без лишних слов):\n"
+        f"Подзадача 1: <текст подзадачи>\n"
+        f"Подзадача 2: <текст подзадачи>\n"
+        f"Подзадача 3: <текст подзадачи>\n"
+        f"Обоснование: <краткое пояснение разбивки>\n"
+    )
+    raw = await chat(history, prompt)
+    return _parse_breakdown(raw)
+
+
+def _parse_breakdown(raw: str) -> dict:
+    lines = [l.strip() for l in raw.splitlines() if l.strip()]
+    subtasks = []
+    reasoning = "Разбиение выполнено с учётом специализации команды и компетенций сотрудников."
+    for line in lines:
+        if line.lower().startswith("подзадача"):
+            parts = line.split(":", 1)
+            if len(parts) == 2:
+                subtasks.append(parts[1].strip())
+        elif line.lower().startswith("обоснование:"):
+            reasoning = line.split(":", 1)[1].strip()
+    if len(subtasks) < 3:
+        subtasks = [
+            "Провести анализ требований и составить ТЗ",
+            "Разработать прототип / MVP",
+            "Провести тестирование и подготовить документацию",
+        ]
+    return {"subtasks": subtasks[:5], "reasoning": reasoning}

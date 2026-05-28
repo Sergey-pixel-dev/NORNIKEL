@@ -8,7 +8,7 @@ from app.db.database import get_db
 from app.crud.goals import (
     create_goal, get_goals, get_goal, update_goal_validation, update_goal,
     create_decomposition, create_assignments, delete_assignments_by_goal,
-    get_teams, get_employees, get_employee,
+    get_teams, get_employees, get_employee, get_employees_by_team,
     create_task, get_tasks_by_goal, update_task, delete_task,
     create_version, get_versions_by_goal,
     append_chat_message, reset_chat_history
@@ -25,7 +25,7 @@ from app.agent.decomposer import decompose_goal as mock_decompose
 from app.agent.matcher import match_employees_to_tasks
 from app.agent.title_generator import generate_title
 from app.agent.document_parser import extract_text
-from app.agent.ai_service import rewrite_goal, decompose_goal, suggest_assignments
+from app.agent.ai_service import rewrite_goal, decompose_goal, suggest_assignments, breakdown_team_task
 from app.agent.ai_mock import ai_rewrite_goal as mock_rewrite
 
 router = APIRouter(prefix="/api")
@@ -349,6 +349,76 @@ async def api_list_teams(db: AsyncSession = Depends(get_db)):
 @router.get("/employees", response_model=List[EmployeeRead])
 async def api_list_employees(db: AsyncSession = Depends(get_db)):
     return await get_employees(db)
+
+
+@router.get("/teams/{team_id}/employees", response_model=List[EmployeeRead])
+async def api_list_team_employees(team_id: UUID, db: AsyncSession = Depends(get_db)):
+    return await get_employees_by_team(db, team_id)
+
+
+@router.post("/goals/{goal_id}/breakdown-team")
+async def api_breakdown_team(goal_id: UUID, data: dict, db: AsyncSession = Depends(get_db)):
+    """Разбивает задачу выбранной команды на 3-5 конкретных подзадач.
+    Принимает: { team_id, team_name, team_task, specialization }.
+    Сохраняет подзадачи как Task с type='subtask' и привязкой к goal_id.
+    """
+    goal = await get_goal(db, goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Цель не найдена")
+
+    team_id_str = data.get("team_id")
+    team_name = data.get("team_name", "")
+    team_task = data.get("team_task", "")
+    specialization = data.get("specialization", "")
+    if not team_id_str or not team_task:
+        raise HTTPException(status_code=400, detail="Передайте team_id и team_task")
+
+    team_uuid = UUID(team_id_str)
+
+    # Получаем сотрудников команды
+    team_employees = await get_employees_by_team(db, team_uuid)
+    employees_info = [
+        {"name": e.name, "role": e.role, "skills": e.skills}
+        for e in team_employees
+    ]
+
+    # Вызываем LLM для разбиения
+    result = await breakdown_team_task(
+        db, goal_id, team_name, team_task, specialization, goal.description, employees_info
+    )
+
+    # Удаляем старые subtask'и ТОЛЬКО этой команды (оставляем subtask'и других команд)
+    old_tasks = await get_tasks_by_goal(db, goal_id)
+    for t in old_tasks:
+        if t.type == "subtask" and t.team_id == team_uuid:
+            await delete_task(db, t.id)
+
+    # Создаём новые subtask'и
+    created = []
+    for i, sub in enumerate(result.subtasks):
+        task = await create_task(db, TaskCreate(
+            goal_id=goal_id,
+            team_id=team_uuid,
+            text=sub,
+            type="subtask",
+            order=i,
+        ))
+        created.append(task)
+
+    # Сохраняем версию
+    await create_version(db, GoalVersionCreate(
+        goal_id=goal_id,
+        step="breakdown_team",
+        payload={"team_id": str(team_uuid), "team_name": team_name, "subtasks": result.subtasks}
+    ))
+
+    return {
+        "team_id": str(team_uuid),
+        "team_name": team_name,
+        "subtasks": result.subtasks,
+        "reasoning": result.reasoning,
+        "task_ids": [str(t.id) for t in created],
+    }
 
 
 # --- Legacy Match (mock) ---
