@@ -25,6 +25,8 @@ services:
     container_name: nornikel-ai-backend
     environment:
       DATABASE_URL: postgresql+asyncpg://okr_user:okr_pass@postgres:5432/nornikel_okr
+      OLLAMA_HOST: http://host.docker.internal:11434
+      OLLAMA_MODEL: phi4-mini:latest
     ports:
       - "8000:8000"
     depends_on:
@@ -32,6 +34,8 @@ services:
         condition: service_healthy
     networks:
       - nornikel-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

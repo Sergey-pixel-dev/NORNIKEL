@@ -24,7 +24,7 @@ from app.agent.decomposer import decompose_goal
 from app.agent.matcher import match_employees_to_tasks
 from app.agent.title_generator import generate_title
 from app.agent.document_parser import extract_text
-from app.agent.ai_mock import ai_rewrite_goal
+from app.agent.ai_service import rewrite_goal, decompose_goal, suggest_assignments
 
 router = APIRouter(prefix="/api")
 
@@ -81,11 +81,12 @@ async def api_upload_document(file: UploadFile = File(...)):
 
 @router.post("/ai-rewrite", response_model=AIRewriteResponse)
 async def api_ai_rewrite(data: dict):
-    """Mock: переписывает цель и генерирует KR при помощи 'ИИ'."""
+    """Переписывает цель и генерирует KR при помощи LLM (fallback на mock)."""
     text = data.get("text", "")
     if not text:
         raise HTTPException(status_code=400, detail="Передайте 'text'")
-    return ai_rewrite_goal(text)
+    result = await rewrite_goal(text)
+    return AIRewriteResponse(rewritten_goal=result["rewritten_goal"], key_results=result["key_results"])
 
 
 # --- Goals ---
@@ -114,7 +115,7 @@ async def api_decompose_goal(goal_id: UUID, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Цель не найдена")
 
     teams = await get_teams(db)
-    result = decompose_goal(goal.description, teams=[{"name": t.name, "specialization": t.specialization} for t in teams])
+    result = await decompose_goal(goal.description, teams=[{"name": t.name, "specialization": t.specialization} for t in teams])
 
     decomposition = await create_decomposition(
         db, goal_id,
@@ -305,25 +306,12 @@ async def api_suggest_assignments(goal_id: UUID, db: AsyncSession = Depends(get_
 
     employees_db = await get_employees(db)
     employees = [
-        {"name": e.name, "role": e.role, "skills": [s.lower() for s in e.skills]}
+        {"id": str(e.id), "name": e.name, "role": e.role, "skills": [s.lower() for s in e.skills]}
         for e in employees_db
     ]
 
-    tasks = [{"text": t.text, "type": t.type} for t in tasks_db]
-    result = match_employees_to_tasks(tasks, employees)
-
-    # Сопоставляем task_text с task_id
-    suggestions = []
-    for a in result.assignments:
-        task = next((t for t in tasks_db if t.text == a.task), None)
-        employee = next((e for e in employees_db if e.name == a.employee), None)
-        suggestions.append({
-            "task_id": str(task.id) if task else None,
-            "task_text": a.task,
-            "employee_id": str(employee.id) if employee else None,
-            "employee_name": a.employee,
-            "reason": a.reason,
-        })
+    tasks = [{"id": str(t.id), "text": t.text, "type": t.type} for t in tasks_db]
+    suggestions = await suggest_assignments(tasks, employees)
 
     return {"suggestions": suggestions}
 
