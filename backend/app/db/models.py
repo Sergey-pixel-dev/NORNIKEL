@@ -47,6 +47,7 @@ class Goal(Base):
     validation_score: Mapped[int] = mapped_column(Integer, default=0)
     validation_checks: Mapped[list] = mapped_column(JSON, default=list)
     suggestions: Mapped[list] = mapped_column(JSON, default=list)
+    chat_history: Mapped[list] = mapped_column(JSON, default=list)  # [{role, content}, ...]
     created_at: Mapped[datetime] = mapped_column(default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)
 

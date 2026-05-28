@@ -278,9 +278,12 @@
                                 <div class="hint-text">Опишите цель максимально конкретно. Хорошая цель содержит метрику и срок.</div>
                             </div>
 
-                            <div style="margin-bottom: 16px;">
+                            <div style="margin-bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap;">
                                 <button class="btn-secondary" onclick="aiRewriteGoal()">
                                     ✨ Переписать при помощи ИИ
+                                </button>
+                                <button class="btn-secondary" onclick="resetChat()" id="btn-reset-chat" style="display:none;">
+                                    🗑 Очистить контекст ИИ
                                 </button>
                             </div>
 

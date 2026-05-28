@@ -27,6 +27,7 @@ class GoalRead(BaseModel):
     validation_score: int
     validation_checks: list
     suggestions: list
+    chat_history: list
     created_at: datetime
     updated_at: datetime
 
@@ -39,6 +40,7 @@ class GoalList(BaseModel):
     description: str
     is_valid: bool
     validation_score: int
+    chat_history: list
     created_at: datetime
 
 

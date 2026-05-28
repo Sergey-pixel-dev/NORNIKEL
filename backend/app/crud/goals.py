@@ -54,6 +54,28 @@ async def update_goal(
     return goal
 
 
+async def append_chat_message(db: AsyncSession, goal_id: UUID, role: str, content: str) -> Optional[Goal]:
+    goal = await get_goal(db, goal_id)
+    if not goal:
+        return None
+    new_history = list(goal.chat_history or [])
+    new_history.append({"role": role, "content": content})
+    goal.chat_history = new_history
+    await db.commit()
+    await db.refresh(goal)
+    return goal
+
+
+async def reset_chat_history(db: AsyncSession, goal_id: UUID) -> Optional[Goal]:
+    goal = await get_goal(db, goal_id)
+    if not goal:
+        return None
+    goal.chat_history = []
+    await db.commit()
+    await db.refresh(goal)
+    return goal
+
+
 async def update_goal_validation(
     db: AsyncSession, goal_id: UUID, data: GoalUpdateValidation
 ) -> Optional[Goal]:

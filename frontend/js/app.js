@@ -104,6 +104,14 @@ function onGoalSelected(stepName, goalId) {
     if (!goalId) return;
     appState.currentGoalId = goalId;
     loadGoalDetails(goalId, stepName);
+    updateResetChatButton();
+}
+
+function updateResetChatButton() {
+    const btn = document.getElementById('btn-reset-chat');
+    if (btn) {
+        btn.style.display = appState.currentGoalId ? 'inline-flex' : 'none';
+    }
 }
 
 async function loadGoalDetails(goalId, stepName) {
@@ -185,11 +193,15 @@ async function aiRewriteGoal() {
         alert('Введите цель');
         return;
     }
+    const payload = { text };
+    if (appState.currentGoalId) {
+        payload.goal_id = appState.currentGoalId;
+    }
     try {
         const res = await fetch(`${API_URL}/api/ai-rewrite`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text })
+            body: JSON.stringify(payload)
         });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
@@ -197,6 +209,21 @@ async function aiRewriteGoal() {
         showDiffModal(text, data.rewritten_goal, data.key_results);
     } catch (e) {
         alert('Ошибка ИИ-рерайта: ' + e.message);
+    }
+}
+
+async function resetChat() {
+    if (!appState.currentGoalId) {
+        alert('Сначала выберите или создайте цель');
+        return;
+    }
+    if (!confirm('Очистить историю чата ИИ для этой цели?')) return;
+    try {
+        const res = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/reset-chat`, { method: 'POST' });
+        if (!res.ok) throw new Error(await res.text());
+        alert('Контекст ИИ очищен');
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
     }
 }
 
@@ -253,6 +280,7 @@ async function validateGoal() {
         appState.currentGoalId = data.goal_id;
         appState.currentTitle = data.title;
         renderValidationResult(data.validation, goal, data.goal_id);
+        updateResetChatButton();
         await loadGoalsList('validate');
         await loadGoalsList('decompose');
         await loadGoalsList('match');

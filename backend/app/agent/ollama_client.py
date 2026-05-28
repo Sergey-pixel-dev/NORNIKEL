@@ -6,21 +6,54 @@ OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "phi4-mini:latest")
 TIMEOUT = 30.0
 
+SYSTEM_PROMPT = (
+    "Ты — ИИ-ассистент OKR для компании Норникель. "
+    "Ты помогаешь директорам и руководителям: проверять цели на SMART, "
+    "декомпозировать их на команды с учётом специализации, и распределять задачи по сотрудникам. "
+    "Ты всегда отвечаешь строго в запрошенном формате, без лишних слов."
+)
+
 
 def _build_url(path: str) -> str:
     return f"{OLLAMA_HOST.rstrip('/')}{path}"
 
 
 def _clean_response(text: str) -> str:
-    # Убираем лишние переносы и пробелы
     return text.strip()
 
 
-async def rewrite_goal(text: str) -> dict:
+def _ensure_system(history: List[dict]) -> List[dict]:
+    if not history or history[0].get("role") != "system":
+        return [{"role": "system", "content": SYSTEM_PROMPT}] + history
+    return history
+
+
+async def chat(history: List[dict], user_prompt: str) -> str:
     """
-    Просит LLM переписать цель в формате SMART и выдать KR.
-    Ожидает ответ в формате: Цель | KR1 | KR2 | KR3
+    Отправляет запрос в Ollama Chat API с полной историей сообщений.
+    Возвращает текст ответа ассистента.
     """
+    messages = _ensure_system(history)
+    messages.append({"role": "user", "content": user_prompt})
+
+    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+        resp = await client.post(
+            _build_url("/api/chat"),
+            json={
+                "model": OLLAMA_MODEL,
+                "messages": messages,
+                "stream": False,
+                "options": {"temperature": 0.3, "num_predict": 512},
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        assistant_text = _clean_response(data.get("message", {}).get("content", ""))
+
+    return assistant_text
+
+
+async def rewrite_goal(history: List[dict], text: str) -> dict:
     prompt = (
         f"Перепиши следующую цель в формате SMART, конкретизируй метрики и срок. "
         f"Затем сформулируй 2–4 Key Results (KR). "
@@ -32,16 +65,7 @@ async def rewrite_goal(text: str) -> dict:
         f"Исходная цель: {text}\n\n"
         f"Ответ:"
     )
-
-    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-        resp = await client.post(
-            _build_url("/api/generate"),
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        raw = _clean_response(data.get("response", ""))
-
+    raw = await chat(history, prompt)
     return _parse_goal_and_krs(raw)
 
 
@@ -58,15 +82,11 @@ def _parse_goal_and_krs(raw: str) -> dict:
     if not rewritten:
         rewritten = lines[0] if lines else raw
     if not krs:
-        # fallback: считаем все строки после первой как KR
         krs = lines[1:] if len(lines) > 1 else ["Достичь целевого показателя", "Подготовить методологию"]
     return {"rewritten_goal": rewritten, "key_results": krs[:5]}
 
 
-async def decompose_goal_llm(goal: str, teams: List[dict]) -> dict:
-    """
-    Просит LLM декомпозировать цель на команды.
-    """
+async def decompose_goal_llm(history: List[dict], goal: str, teams: List[dict]) -> dict:
     teams_list = "\n".join([f"- {t['name']} ({t.get('specialization','')})" for t in teams])
     prompt = (
         f"Разбей корпоративную цель на задачи для {len(teams)} команд. "
@@ -79,15 +99,7 @@ async def decompose_goal_llm(goal: str, teams: List[dict]) -> dict:
         prompt += f"Команда {i}: <задача для {t['name']}>\n"
     prompt += "\nОбоснование: <краткое пояснение разбивки>\n"
 
-    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-        resp = await client.post(
-            _build_url("/api/generate"),
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        raw = _clean_response(data.get("response", ""))
-
+    raw = await chat(history, prompt)
     return _parse_decompose(raw, teams)
 
 
@@ -105,7 +117,6 @@ def _parse_decompose(raw: str, teams: List[dict]) -> dict:
         if line.startswith("Обоснование:"):
             reasoning = line.split(":", 1)[1].strip()
 
-    # Если LLM не разобрал по командам — делаем fallback
     if len(team_goals) < len(teams):
         team_goals = [{"team_name": t["name"], "text": f"Реализовать направление: {t.get('specialization','')}"} for t in teams]
 
@@ -117,10 +128,7 @@ def _parse_decompose(raw: str, teams: List[dict]) -> dict:
     }
 
 
-async def suggest_assignments_llm(tasks: List[dict], employees: List[dict]) -> List[dict]:
-    """
-    Просит LLM распределить задачи по сотрудникам с учётом навыков.
-    """
+async def suggest_assignments_llm(history: List[dict], tasks: List[dict], employees: List[dict]) -> List[dict]:
     tasks_text = "\n".join([f"- {i+1}. {t['text']}" for i, t in enumerate(tasks)])
     emps_text = "\n".join([f"- {e['name']}: {', '.join(e.get('skills', []))}" for e in employees])
 
@@ -134,15 +142,7 @@ async def suggest_assignments_llm(tasks: List[dict], employees: List[dict]) -> L
         prompt += f"Задача {i+1}: <имя сотрудника>\n"
     prompt += "\nОбоснование: <почему так распределено>\n"
 
-    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-        resp = await client.post(
-            _build_url("/api/generate"),
-            json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        raw = _clean_response(data.get("response", ""))
-
+    raw = await chat(history, prompt)
     return _parse_assignments(raw, tasks, employees)
 
 

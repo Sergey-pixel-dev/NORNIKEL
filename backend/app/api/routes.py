@@ -10,7 +10,8 @@ from app.crud.goals import (
     create_decomposition, create_assignments, delete_assignments_by_goal,
     get_teams, get_employees, get_employee,
     create_task, get_tasks_by_goal, update_task, delete_task,
-    create_version, get_versions_by_goal
+    create_version, get_versions_by_goal,
+    append_chat_message, reset_chat_history
 )
 from app.schemas import (
     GoalCreate, GoalRead, GoalList, GoalDetailRead,
@@ -20,11 +21,12 @@ from app.schemas import (
     GoalVersionCreate, GoalVersionRead, AssignTasksPayload
 )
 from app.agent.validator import validate_goal
-from app.agent.decomposer import decompose_goal
+from app.agent.decomposer import decompose_goal as mock_decompose
 from app.agent.matcher import match_employees_to_tasks
 from app.agent.title_generator import generate_title
 from app.agent.document_parser import extract_text
 from app.agent.ai_service import rewrite_goal, decompose_goal, suggest_assignments
+from app.agent.ai_mock import ai_rewrite_goal as mock_rewrite
 
 router = APIRouter(prefix="/api")
 
@@ -54,6 +56,18 @@ async def api_validate_goal(data: GoalCreate, db: AsyncSession = Depends(get_db)
         )
     )
 
+    # Инициализируем контекстный чат
+    kr_text = "\n".join([f"- {kr}" for kr in (data.key_results or [])])
+    await append_chat_message(
+        db, goal.id, "user",
+        f"Валидируй цель:\n{data.description}\n\nKey Results:\n{kr_text}"
+    )
+    assistant_text = (
+        f"Оценка: {validation.score}/100. Валидна: {validation.is_valid}.\n"
+        + "\n".join([f"{'[+] ' if c.passed else '[-] '}{c.name}: {c.message}" for c in validation.checks])
+    )
+    await append_chat_message(db, goal.id, "assistant", assistant_text)
+
     # Создаём начальную версию
     await create_version(db, GoalVersionCreate(
         goal_id=goal.id,
@@ -80,13 +94,25 @@ async def api_upload_document(file: UploadFile = File(...)):
 
 
 @router.post("/ai-rewrite", response_model=AIRewriteResponse)
-async def api_ai_rewrite(data: dict):
-    """Переписывает цель и генерирует KR при помощи LLM (fallback на mock)."""
+async def api_ai_rewrite(data: dict, db: AsyncSession = Depends(get_db)):
+    """
+    Переписывает цель и генерирует KR при помощи LLM (fallback на mock).
+    Если передан goal_id — сохраняет в контекстный чат.
+    """
     text = data.get("text", "")
+    goal_id = data.get("goal_id")
     if not text:
         raise HTTPException(status_code=400, detail="Передайте 'text'")
-    result = await rewrite_goal(text)
-    return AIRewriteResponse(rewritten_goal=result["rewritten_goal"], key_results=result["key_results"])
+
+    if goal_id:
+        try:
+            result = await rewrite_goal(db, UUID(goal_id), text)
+            return AIRewriteResponse(rewritten_goal=result["rewritten_goal"], key_results=result["key_results"])
+        except Exception as e:
+            print(f"[AI] rewrite with context failed ({e}), using stateless mock")
+
+    result = mock_rewrite(text)
+    return AIRewriteResponse(rewritten_goal=result.rewritten_goal, key_results=result.key_results)
 
 
 # --- Goals ---
@@ -109,13 +135,16 @@ async def api_get_goal(goal_id: UUID, db: AsyncSession = Depends(get_db)):
 
 @router.post("/goals/{goal_id}/decompose", response_model=dict)
 async def api_decompose_goal(goal_id: UUID, db: AsyncSession = Depends(get_db)):
-    """Декомпозирует цель с учётом команд из БД."""
+    """Декомпозирует цель с учётом команд из БД и контекста чата."""
     goal = await get_goal(db, goal_id)
     if not goal:
         raise HTTPException(status_code=404, detail="Цель не найдена")
 
     teams = await get_teams(db)
-    result = await decompose_goal(goal.description, teams=[{"name": t.name, "specialization": t.specialization} for t in teams])
+    result = await decompose_goal(
+        db, goal_id, goal.description,
+        teams=[{"name": t.name, "specialization": t.specialization} for t in teams]
+    )
 
     decomposition = await create_decomposition(
         db, goal_id,
@@ -159,7 +188,6 @@ async def api_generate_tasks(goal_id: UUID, db: AsyncSession = Depends(get_db)):
 
     decomposition = goal.decompositions[-1]
 
-    # Генерируем задачи из team_goals + individual
     tasks_data = []
     order = 0
     for tg in decomposition.team_goals:
@@ -182,7 +210,7 @@ async def api_generate_tasks(goal_id: UUID, db: AsyncSession = Depends(get_db)):
         task = await create_task(db, TaskCreate(goal_id=goal_id, **td))
         created.append(task)
 
-    # Версия
+    # Сохраняем версию
     await create_version(db, GoalVersionCreate(
         goal_id=goal_id,
         step="generate_tasks",
@@ -219,6 +247,29 @@ async def api_delete_task(task_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 # --- Assignments ---
+
+@router.post("/goals/{goal_id}/suggest-assignments")
+async def api_suggest_assignments(goal_id: UUID, db: AsyncSession = Depends(get_db)):
+    """ИИ предлагает распределение задач по сотрудникам (без сохранения), с учётом контекста чата."""
+    goal = await get_goal(db, goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Цель не найдена")
+
+    tasks_db = await get_tasks_by_goal(db, goal_id)
+    if not tasks_db:
+        raise HTTPException(status_code=400, detail="У цели нет задач. Сначала сгенерируйте задачи.")
+
+    employees_db = await get_employees(db)
+    employees = [
+        {"id": str(e.id), "name": e.name, "role": e.role, "skills": [s.lower() for s in e.skills]}
+        for e in employees_db
+    ]
+
+    tasks = [{"id": str(t.id), "text": t.text, "type": t.type} for t in tasks_db]
+    suggestions = await suggest_assignments(db, goal_id, tasks, employees)
+
+    return {"suggestions": suggestions}
+
 
 @router.post("/goals/{goal_id}/assign")
 async def api_assign_tasks(goal_id: UUID, payload: AssignTasksPayload, db: AsyncSession = Depends(get_db)):
@@ -279,6 +330,15 @@ async def api_rollback(goal_id: UUID, data: dict, db: AsyncSession = Depends(get
     return {"ok": True, "restored_version_id": version_id, "step": target.step}
 
 
+@router.post("/goals/{goal_id}/reset-chat")
+async def api_reset_chat(goal_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Очищает историю чата для цели."""
+    goal = await reset_chat_history(db, goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Цель не найдена")
+    return {"ok": True}
+
+
 # --- Teams & Employees ---
 
 @router.get("/teams", response_model=List[TeamRead])
@@ -291,30 +351,7 @@ async def api_list_employees(db: AsyncSession = Depends(get_db)):
     return await get_employees(db)
 
 
-# --- AI Match (suggest & apply) ---
-
-@router.post("/goals/{goal_id}/suggest-assignments")
-async def api_suggest_assignments(goal_id: UUID, db: AsyncSession = Depends(get_db)):
-    """ИИ предлагает распределение задач по сотрудникам (без сохранения)."""
-    goal = await get_goal(db, goal_id)
-    if not goal:
-        raise HTTPException(status_code=404, detail="Цель не найдена")
-
-    tasks_db = await get_tasks_by_goal(db, goal_id)
-    if not tasks_db:
-        raise HTTPException(status_code=400, detail="У цели нет задач. Сначала сгенерируйте задачи.")
-
-    employees_db = await get_employees(db)
-    employees = [
-        {"id": str(e.id), "name": e.name, "role": e.role, "skills": [s.lower() for s in e.skills]}
-        for e in employees_db
-    ]
-
-    tasks = [{"id": str(t.id), "text": t.text, "type": t.type} for t in tasks_db]
-    suggestions = await suggest_assignments(tasks, employees)
-
-    return {"suggestions": suggestions}
-
+# --- Legacy Match (mock) ---
 
 @router.post("/goals/{goal_id}/match", response_model=MatchResult)
 async def api_match_goal(goal_id: UUID, db: AsyncSession = Depends(get_db)):
