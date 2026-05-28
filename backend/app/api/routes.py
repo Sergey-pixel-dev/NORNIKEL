@@ -249,17 +249,30 @@ async def api_delete_task(task_id: UUID, db: AsyncSession = Depends(get_db)):
 # --- Assignments ---
 
 @router.post("/goals/{goal_id}/suggest-assignments")
-async def api_suggest_assignments(goal_id: UUID, db: AsyncSession = Depends(get_db)):
-    """ИИ предлагает распределение задач по сотрудникам (без сохранения), с учётом контекста чата."""
+async def api_suggest_assignments(goal_id: UUID, data: dict, db: AsyncSession = Depends(get_db)):
+    """ИИ предлагает распределение задач по сотрудникам (без сохранения), с учётом контекста чата.
+    Принимает опциональный team_id — если передан, фильтрует задачи и сотрудников только по этой команде."""
     goal = await get_goal(db, goal_id)
     if not goal:
         raise HTTPException(status_code=404, detail="Цель не найдена")
+
+    team_id_str = data.get("team_id")
+    team_uuid = UUID(team_id_str) if team_id_str else None
 
     tasks_db = await get_tasks_by_goal(db, goal_id)
     if not tasks_db:
         raise HTTPException(status_code=400, detail="У цели нет задач. Сначала сгенерируйте задачи.")
 
-    employees_db = await get_employees(db)
+    # Фильтруем задачи по команде (если team_id указан)
+    if team_uuid:
+        tasks_db = [t for t in tasks_db if t.team_id == team_uuid]
+        employees_db = await get_employees_by_team(db, team_uuid)
+    else:
+        employees_db = await get_employees(db)
+
+    if not tasks_db:
+        raise HTTPException(status_code=400, detail="У команды нет задач для распределения.")
+
     employees = [
         {"id": str(e.id), "name": e.name, "role": e.role, "skills": [s.lower() for s in e.skills]}
         for e in employees_db

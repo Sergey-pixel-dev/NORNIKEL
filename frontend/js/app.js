@@ -835,13 +835,22 @@ async function suggestAssignments() {
         alert('Выберите цель');
         return;
     }
+    const teamId = appState.currentMatchTeamId;
+    if (!teamId) {
+        alert('Выберите команду');
+        return;
+    }
     try {
-        const res = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/suggest-assignments`, { method: 'POST' });
+        const res = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/suggest-assignments`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ team_id: teamId })
+        });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
         appState.pendingSuggestions = data.suggestions || [];
 
-        // Показываем diff
+        // Показываем diff только для текущих задач команды
         showAssignmentDiff(data.suggestions);
     } catch (e) {
         alert('Ошибка авторспределения: ' + e.message);

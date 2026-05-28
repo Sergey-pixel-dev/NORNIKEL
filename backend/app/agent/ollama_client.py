@@ -130,16 +130,17 @@ def _parse_decompose(raw: str, teams: List[dict]) -> dict:
 
 async def suggest_assignments_llm(history: List[dict], tasks: List[dict], employees: List[dict]) -> List[dict]:
     tasks_text = "\n".join([f"- {i+1}. {t['text']}" for i, t in enumerate(tasks)])
-    emps_text = "\n".join([f"- {e['name']}: {', '.join(e.get('skills', []))}" for e in employees])
+    emps_text = "\n".join([f"- {e['name']} ({e.get('role', '')}): {', '.join(e.get('skills', []))}" for e in employees])
 
     prompt = (
-        f"Распредели задачи по сотрудникам на основе их навыков.\n\n"
+        f"Распредели задачи по сотрудникам на основе их навыков.\n"
+        f"ВАЖНО: используй ТОЛЬКО сотрудников из списка ниже.\n\n"
         f"Задачи:\n{tasks_text}\n\n"
-        f"Сотрудники:\n{emps_text}\n\n"
+        f"Доступные сотрудники (только из этих имён выбирай):\n{emps_text}\n\n"
         f"Ответь строго в формате:\n"
     )
     for i in range(len(tasks)):
-        prompt += f"Задача {i+1}: <имя сотрудника>\n"
+        prompt += f"Задача {i+1}: <имя сотрудника из списка>\n"
     prompt += "\nОбоснование: <почему так распределено>\n"
 
     raw = await chat(history, prompt)
@@ -158,15 +159,18 @@ def _parse_assignments(raw: str, tasks: List[dict], employees: List[dict]) -> Li
             if line.startswith(prefix):
                 emp_name = line[len(prefix):].strip()
                 break
-        if not emp_name:
-            emp_name = employees[i % len(employees)]["name"] if employees else "?"
 
-        emp = emp_map.get(emp_name)
+        emp = emp_map.get(emp_name) if emp_name else None
+        # Fallback: если LLM вернул неизвестное имя — берём по round-robin из доступных
+        if not emp and employees:
+            emp = employees[i % len(employees)]
+            emp_name = emp["name"]
+
         suggestions.append({
             "task_id": task.get("id"),
             "task_text": task.get("text", ""),
             "employee_id": emp["id"] if emp else None,
-            "employee_name": emp_name,
+            "employee_name": emp_name if emp else "?",
             "reason": f"Наилучшее соответствие по компетенциям: {', '.join(emp.get('skills', [])[:2]) if emp else 'общая компетентность'}"
         })
 
