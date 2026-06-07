@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent import ollama_client
-from app.agent.ai_mock import ai_rewrite_goal as mock_rewrite
+from app.agent.ai_mock import ai_rewrite_goal as mock_rewrite, mock_check_report
 from app.agent.decomposer import decompose_goal as mock_decompose
 from app.agent.matcher import match_employees_to_tasks
 from app.crud.goals import append_chat_message, get_goal
@@ -98,6 +98,17 @@ async def suggest_assignments(db: AsyncSession, goal_id: UUID, tasks: List[dict]
                 "reason": a.reason,
             })
         return suggestions
+
+
+async def check_report_quality(report_text: str, task_text: str) -> dict:
+    try:
+        result = await asyncio.wait_for(
+            ollama_client.check_report_llm(report_text, task_text), timeout=35
+        )
+        return result
+    except Exception as e:
+        print(f"[AI] LLM report check failed ({e}), using mock")
+        return mock_check_report(report_text, task_text)
 
 
 class BreakdownResult:

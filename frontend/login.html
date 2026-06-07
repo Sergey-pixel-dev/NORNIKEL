@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход — Карты КПЭ</title>
+    <link rel="stylesheet" href="css/nornikel-theme.css">
+    <style>
+        .login-page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #c8ddf0 0%, #e8f0f8 50%, #d0e4f4 100%);
+        }
+        .login-card {
+            background: #fff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+        .login-logo {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .login-logo svg {
+            width: 60px;
+            height: 40px;
+        }
+        .login-title {
+            text-align: center;
+            font-size: 20px;
+            font-weight: 700;
+            color: #222;
+            margin-bottom: 24px;
+        }
+        .login-form .input-group {
+            margin-bottom: 16px;
+        }
+        .login-form .field-label {
+            font-size: 13px;
+            color: #444;
+            margin-bottom: 6px;
+            display: block;
+        }
+        .login-form .field-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #b0c4de;
+            border-radius: 4px;
+            background: #f7f9fa;
+            font-size: 14px;
+            color: #333;
+        }
+        .login-form .field-input:focus {
+            outline: none;
+            border-color: #0066CC;
+            background: #fff;
+        }
+        .login-form .btn-primary {
+            width: 100%;
+            margin-top: 8px;
+        }
+        .login-error {
+            color: #c62828;
+            font-size: 13px;
+            margin-top: 12px;
+            text-align: center;
+            display: none;
+        }
+        .login-error.visible {
+            display: block;
+        }
+    </style>
+</head>
+<body class="login-page">
+    <div class="login-card">
+        <div class="login-logo">
+            <svg viewBox="0 0 60 40" width="60" height="40">
+                <ellipse cx="22" cy="20" rx="16" ry="16" fill="#0066CC" opacity="0.9"/>
+                <ellipse cx="38" cy="20" rx="16" ry="16" fill="#0099FF" opacity="0.8"/>
+            </svg>
+        </div>
+        <h1 class="login-title">Карты КПЭ</h1>
+        <form class="login-form" id="login-form" onsubmit="return doLogin(event)">
+            <div class="input-group">
+                <label class="field-label">Email</label>
+                <input type="email" class="field-input" id="login-email" placeholder="you@nornik.ru" required>
+            </div>
+            <div class="input-group">
+                <label class="field-label">Пароль</label>
+                <input type="password" class="field-input" id="login-password" placeholder="••••••••" required>
+            </div>
+            <button type="submit" class="btn-primary">Войти</button>
+            <div class="login-error" id="login-error"></div>
+        </form>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin;
+
+        async function doLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+            const errorBox = document.getElementById('login-error');
+            errorBox.classList.remove('visible');
+
+            try {
+                const res = await fetch(`${API_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: email, password })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.detail || 'Ошибка входа');
+                }
+                localStorage.setItem('access_token', data.access_token);
+                localStorage.setItem('user', JSON.stringify(data.user));
+                window.location.href = '/index.html';
+            } catch (err) {
+                errorBox.textContent = err.message;
+                errorBox.classList.add('visible');
+            }
+            return false;
+        }
+    </script>
+</body>
+</html>

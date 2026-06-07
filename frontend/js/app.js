@@ -8,15 +8,96 @@ const appState = {
     validated: false,
     teams: [],
     employees: [],
-    diffPayload: null, // для хранения предложения ИИ
-    currentDecomposition: null, // текущая декомпозиция для diff
+    diffPayload: null,
+    currentDecomposition: null,
     breakdownTeamId: null,
-    subtaskTeamMap: {}, // task_id -> team_id
+    subtaskTeamMap: {},
     pendingDecomposeData: null,
+    user: null,
+    employee: null,
 };
 
 // === API URL ===
 const API_URL = window.location.origin;
+
+function authHeaders() {
+    const token = localStorage.getItem('access_token');
+    return token ? { 'Authorization': 'Bearer ' + token } : {};
+}
+
+function logout() {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('user');
+    window.location.href = '/login.html';
+}
+
+function getTeamName(teamId) {
+    if (!teamId) return '—';
+    const t = appState.teams.find(tm => tm.id === teamId);
+    return t ? t.name : teamId.substring(0, 8);
+}
+
+async function initAuth() {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+        appState.user = JSON.parse(userStr);
+    }
+    try {
+        const res = await fetch(`${API_URL}/api/auth/me`, { headers: { ...authHeaders() } });
+        if (!res.ok) throw new Error('auth failed');
+        const data = await res.json();
+        appState.user = data.user;
+        appState.employee = data.employee;
+        localStorage.setItem('user', JSON.stringify(data.user));
+        updateUIForRole();
+    } catch (e) {
+        console.error('Auth init failed', e);
+        logout();
+    }
+}
+
+function updateUIForRole() {
+    const user = appState.user;
+    if (!user) return;
+    const roleLabels = { employee: 'Сотрудник', dept_head: 'Руководитель отдела', director: 'Руководитель направления' };
+    document.getElementById('header-user-name').textContent = user.name + ' (' + roleLabels[user.role] + ')';
+    document.getElementById('header-user-avatar').textContent = user.name.split(' ').map(p => p[0]).join('').substring(0, 2);
+    document.getElementById('profile-name').textContent = user.name;
+    document.getElementById('profile-position').textContent = roleLabels[user.role];
+
+    // Сотрудник
+    if (user.role === 'employee') {
+        document.getElementById('tab-btn-kpi').textContent = 'МОИ ЗАДАЧИ';
+        document.getElementById('tab-btn-ai-assistant').style.display = 'none';
+        document.getElementById('btn-manage-employees').style.display = 'none';
+        document.getElementById('btn-new-report').style.display = 'inline-flex';
+        // Скрываем кнопки редактирования целей
+        document.querySelectorAll('.btn-validate, .btn-decompose, .btn-generate-tasks, .btn-assign, .btn-rollback').forEach(el => el.style.display = 'none');
+    }
+
+    // Руководитель отдела
+    if (user.role === 'dept_head') {
+        document.getElementById('tab-btn-ai-assistant').style.display = 'none';
+        document.getElementById('btn-manage-employees').style.display = 'inline-flex';
+        document.getElementById('btn-new-report').style.display = 'none';
+        // Скрываем кнопки director'а
+        document.querySelectorAll('.btn-validate, .btn-generate-tasks, .btn-rollback').forEach(el => el.style.display = 'none');
+    }
+
+    // Director
+    if (user.role === 'director') {
+        document.getElementById('btn-manage-employees').style.display = 'none';
+        document.getElementById('btn-new-report').style.display = 'none';
+    }
+}
+
+function requireRole(...roles) {
+    if (!appState.user || !roles.includes(appState.user.role)) {
+        alert('Недостаточно прав');
+        return false;
+    }
+    return true;
+}
 
 // === Табы ===
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -89,7 +170,7 @@ async function loadGoalsList(stepName) {
     if (!select) return;
 
     try {
-        const response = await fetch(`${API_URL}/api/goals`);
+        const response = await fetch(`${API_URL}/api/goals`, { headers: { ...authHeaders() } });
         const goals = await response.json();
         select.innerHTML = '<option value="">-- Выберите цель --</option>';
         goals.forEach(g => {
@@ -120,7 +201,7 @@ function updateResetChatButton() {
 
 async function loadGoalDetails(goalId, stepName) {
     try {
-        const response = await fetch(`${API_URL}/api/goals/${goalId}`);
+        const response = await fetch(`${API_URL}/api/goals/${goalId}`, { headers: { ...authHeaders() } });
         const goal = await response.json();
 
         appState.currentGoalData = goal;
@@ -187,7 +268,7 @@ async function uploadDocument() {
     formData.append('file', file);
 
     try {
-        const res = await fetch(`${API_URL}/api/upload-document`, { method: 'POST', body: formData });
+        const res = await fetch(`${API_URL}/api/upload-document`, { method: 'POST', headers: { ...authHeaders() }, body: formData });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
         document.getElementById('goal-input').value = data.extracted_text;
@@ -210,7 +291,7 @@ async function aiRewriteGoal() {
     try {
         const res = await fetch(`${API_URL}/api/ai-rewrite`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
             body: JSON.stringify(payload)
         });
         if (!res.ok) throw new Error(await res.text());
@@ -229,7 +310,7 @@ async function resetChat() {
     }
     if (!confirm('Очистить историю чата ИИ для этой цели?')) return;
     try {
-        const res = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/reset-chat`, { method: 'POST' });
+        const res = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/reset-chat`, { method: 'POST', headers: { ...authHeaders() } });
         if (!res.ok) throw new Error(await res.text());
         alert('Контекст ИИ очищен');
     } catch (e) {
@@ -282,7 +363,7 @@ async function validateGoal() {
     try {
         const response = await fetch(`${API_URL}/api/validate`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
             body: JSON.stringify({ description: goal, key_results: krs })
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
@@ -357,7 +438,7 @@ function goToDecompose(goalId) {
 // === Декомпозиция ===
 async function loadTeams() {
     try {
-        const res = await fetch(`${API_URL}/api/teams`);
+        const res = await fetch(`${API_URL}/api/teams`, { headers: { ...authHeaders() } });
         appState.teams = await res.json();
     } catch (e) {
         console.error('Ошибка загрузки команд:', e);
@@ -414,7 +495,7 @@ async function runDecomposeFromSelection() {
     try {
         const response = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/decompose`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json', ...authHeaders() }
         });
         const data = await response.json();
 
@@ -526,7 +607,7 @@ function applyDecomposeDiff() {
 // === Матчинг (ручное распределение) ===
 async function loadEmployees() {
     try {
-        const res = await fetch(`${API_URL}/api/employees`);
+        const res = await fetch(`${API_URL}/api/employees`, { headers: { ...authHeaders() } });
         appState.employees = await res.json();
         renderEmployeeCards();
     } catch (e) {
@@ -629,7 +710,7 @@ async function onMatchTeamChange() {
 
     // Загружаем сотрудников команды
     try {
-        const res = await fetch(`${API_URL}/api/teams/${teamId}/employees`);
+        const res = await fetch(`${API_URL}/api/teams/${teamId}/employees`, { headers: { ...authHeaders() } });
         const emps = await res.json();
         appState.currentMatchEmployees = emps;
         renderEmployeeCardsForMatch(emps);
@@ -665,7 +746,7 @@ async function runBreakdownForTeam() {
     try {
         const res = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/breakdown-team`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
             body: JSON.stringify({ team_id: teamId, team_name: teamName, team_task: taskText, specialization })
         });
         if (!res.ok) throw new Error(await res.text());
@@ -843,7 +924,7 @@ async function suggestAssignments() {
     try {
         const res = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/suggest-assignments`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
             body: JSON.stringify({ team_id: teamId })
         });
         if (!res.ok) throw new Error(await res.text());
@@ -936,7 +1017,7 @@ async function saveAssignments() {
             }
             await fetch(`${API_URL}/api/tasks/${taskId}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...authHeaders() },
                 body: JSON.stringify({ text })
             });
         } else {
@@ -949,7 +1030,7 @@ async function saveAssignments() {
     for (const t of tasksToCreate) {
         const res = await fetch(`${API_URL}/api/tasks`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
             body: JSON.stringify({ goal_id: appState.currentGoalId, ...t })
         });
         if (res.ok) {
@@ -964,7 +1045,7 @@ async function saveAssignments() {
     try {
         const res = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/assign`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
             body: JSON.stringify({ assignments: payload })
         });
         if (!res.ok) throw new Error(await res.text());
@@ -988,7 +1069,7 @@ async function rollbackLast() {
         return;
     }
     try {
-        const res = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/versions`);
+        const res = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/versions`, { headers: { ...authHeaders() } });
         const versions = await res.json();
         if (!versions || versions.length < 2) {
             alert('Нет предыдущей версии для отката');
@@ -998,7 +1079,7 @@ async function rollbackLast() {
         const target = versions[1];
         const rollbackRes = await fetch(`${API_URL}/api/goals/${appState.currentGoalId}/rollback`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
             body: JSON.stringify({ version_id: target.id })
         });
         if (!rollbackRes.ok) throw new Error(await rollbackRes.text());
@@ -1022,15 +1103,326 @@ function closeDiffModal() {
     document.getElementById('diff-assign-section').classList.add('hidden');
 }
 
+// === Отчеты ===
+
+async function loadReports() {
+    const container = document.getElementById('reports-list');
+    if (!container) return;
+    try {
+        const res = await fetch(`${API_URL}/api/reports`, { headers: { ...authHeaders() } });
+        const reports = await res.json();
+        renderReports(reports);
+    } catch (e) {
+        console.error('Ошибка загрузки отчетов', e);
+    }
+}
+
+function renderReports(reports) {
+    const container = document.getElementById('reports-list');
+    if (!reports || reports.length === 0) {
+        container.innerHTML = '<p style="color:#888; text-align:center; padding: 40px;">Нет отчетов</p>';
+        return;
+    }
+    const statusLabels = { draft: 'Черновик', pending: 'На проверке', approved: 'Одобрен', rejected: 'Отклонен' };
+    const statusColors = { draft: '#888', pending: '#f59e0b', approved: '#16a34a', rejected: '#dc2626' };
+    const statusClasses = { draft: 'status-draft', pending: 'status-pending', approved: 'status-approved', rejected: 'status-rejected' };
+    let html = '<table style="width:100%; border-collapse: collapse; font-size: 13px;"><thead><tr style="background:#f1f5f9;"><th style="padding:10px; text-align:left;">Содержание</th><th style="padding:10px; text-align:left;">Автор</th><th style="padding:10px; text-align:left;">Дата</th><th style="padding:10px; text-align:left;">Статус</th><th style="padding:10px; text-align:left;">ИИ оценка</th><th style="padding:10px; text-align:left;">Действия</th></tr></thead><tbody>';
+    reports.forEach(r => {
+        const stLabel = statusLabels[r.status] || r.status;
+        const stClass = statusClasses[r.status] || 'status-draft';
+        const dateStr = r.created_at ? new Date(r.created_at).toLocaleString('ru-RU') : '—';
+        const authorStr = r.author_name || '—';
+        const attachmentHtml = r.attachment_url ? `<br><a href="${r.attachment_url}" target="_blank" download style="font-size:12px; color:#0066CC;">📎 Скачать PDF</a>` : '';
+        html += `<tr style="border-bottom:1px solid #e2e8f0;">
+            <td style="padding:10px;">${escapeHtml(r.content.substring(0, 60))}${r.content.length>60?'...':''}${attachmentHtml}</td>
+            <td style="padding:10px;">${escapeHtml(authorStr)}</td>
+            <td style="padding:10px;">${dateStr}</td>
+            <td style="padding:10px;"><span class="status-badge ${stClass}">${stLabel}</span></td>
+            <td style="padding:10px;">${r.ai_score !== null ? r.ai_score + '/100' : '—'}</td>
+            <td style="padding:10px;">`;
+        // Просмотр отчета (все роли)
+        html += `<button class="btn-secondary" style="padding:4px 8px; font-size:12px;" onclick="viewReport('${r.id}')">Просмотр</button>`;
+        if (appState.user && appState.user.role === 'employee' && r.status === 'draft') {
+            html += `<button class="btn-secondary" style="padding:4px 8px; font-size:12px; margin-left:4px;" onclick="aiCheckReport('${r.id}')">Проверить ИИ</button>
+                     <button class="btn-primary" style="padding:4px 8px; font-size:12px; margin-left:4px;" onclick="submitReportById('${r.id}')">Отправить</button>`;
+        }
+        if ((appState.user && (appState.user.role === 'dept_head' || appState.user.role === 'director')) && r.status === 'pending') {
+            html += `<button class="btn-primary" style="padding:4px 8px; font-size:12px; margin-left:4px;" onclick="reviewReport('${r.id}', 'approved')">Одобрить</button>
+                     <button class="btn-secondary" style="padding:4px 8px; font-size:12px; margin-left:4px;" onclick="reviewReport('${r.id}', 'rejected')">Отклонить</button>`;
+        }
+        html += `</td></tr>`;
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function closeReportViewModal() {
+    document.getElementById('report-view-modal').classList.add('hidden');
+}
+
+async function viewReport(reportId) {
+    try {
+        const res = await fetch(`${API_URL}/api/reports`, { headers: { ...authHeaders() } });
+        const reports = await res.json();
+        const r = reports.find(rep => rep.id === reportId);
+        if (!r) return;
+        const statusLabels = { draft: 'Черновик', pending: 'На проверке', approved: 'Одобрен', rejected: 'Отклонен' };
+        const statusClasses = { draft: 'status-draft', pending: 'status-pending', approved: 'status-approved', rejected: 'status-rejected' };
+        const stLabel = statusLabels[r.status] || r.status;
+        const stClass = statusClasses[r.status] || 'status-draft';
+        const dateStr = r.created_at ? new Date(r.created_at).toLocaleString('ru-RU') : '—';
+        const authorStr = r.author_name || '—';
+
+        let bodyHtml = `<div style="margin-bottom:12px;"><strong>Автор:</strong> ${escapeHtml(authorStr)}</div>`;
+        bodyHtml += `<div style="margin-bottom:12px;"><strong>Дата создания:</strong> ${dateStr}</div>`;
+        bodyHtml += `<div style="margin-bottom:12px;"><strong>Статус:</strong> <span class="status-badge ${stClass}">${stLabel}</span></div>`;
+        if (r.attachment_url) {
+            bodyHtml += `<div style="margin-bottom:12px;"><strong>Вложение:</strong> <a href="${r.attachment_url}" target="_blank" download style="color:#0066CC;">📎 Скачать PDF</a></div>`;
+        }
+        bodyHtml += `<hr style="border:0; border-top:1px solid #e2e8f0; margin:16px 0;">`;
+        bodyHtml += `<div style="margin-bottom:12px;"><strong>Содержание:</strong></div>`;
+        bodyHtml += `<div style="background:#f7f9fa; padding:12px; border-radius:6px; white-space:pre-wrap; margin-bottom:16px;">${escapeHtml(r.content)}</div>`;
+        if (r.ai_score !== null) {
+            bodyHtml += `<div style="margin-bottom:12px;"><strong>ИИ оценка:</strong> ${r.ai_score}/100</div>`;
+            bodyHtml += `<div style="background:#fffbeb; padding:12px; border-radius:6px; border-left:4px solid #f59e0b; margin-bottom:16px;">${escapeHtml(r.ai_feedback)}</div>`;
+        }
+        if (r.review_comment) {
+            bodyHtml += `<div style="margin-bottom:12px;"><strong>Комментарий проверяющего:</strong></div>`;
+            bodyHtml += `<div style="background:#ecfdf5; padding:12px; border-radius:6px; border-left:4px solid #16a34a;">${escapeHtml(r.review_comment)}</div>`;
+        }
+
+        document.getElementById('report-view-body').innerHTML = bodyHtml;
+        document.getElementById('report-view-modal').classList.remove('hidden');
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function loadMyTasksForReports() {
+    const select = document.getElementById('report-task-select');
+    if (!select) return;
+    try {
+        const res = await fetch(`${API_URL}/api/tasks`, { headers: { ...authHeaders() } });
+        const tasks = await res.json();
+        select.innerHTML = '<option value="">-- Выберите задачу --</option>';
+        tasks.forEach(t => {
+            select.innerHTML += `<option value="${t.id}">${escapeHtml(t.text.substring(0,60))}</option>`;
+        });
+    } catch (e) {
+        console.error('Ошибка загрузки задач для отчетов', e);
+    }
+}
+
+function openReportForm() {
+    document.getElementById('report-form-section').style.display = 'block';
+    loadMyTasksForReports();
+}
+
+function closeReportForm() {
+    document.getElementById('report-form-section').style.display = 'none';
+    document.getElementById('report-content').value = '';
+    document.getElementById('report-ai-result').classList.add('hidden');
+}
+
+async function submitReport() {
+    const taskId = document.getElementById('report-task-select').value;
+    const content = document.getElementById('report-content').value.trim();
+    const fileInput = document.getElementById('report-attachment');
+    if (!taskId || !content) { alert('Выберите задачу и заполните содержание'); return; }
+    try {
+        const res = await fetch(`${API_URL}/api/reports`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            body: JSON.stringify({ task_id: taskId, content })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const report = await res.json();
+
+        // Загружаем PDF если выбран
+        if (fileInput && fileInput.files && fileInput.files[0]) {
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            await fetch(`${API_URL}/api/reports/${report.id}/upload`, {
+                method: 'POST',
+                headers: { ...authHeaders() },
+                body: formData
+            });
+        }
+
+        closeReportForm();
+        loadReports();
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
+
+async function aiCheckReport(reportId) {
+    try {
+        const res = await fetch(`${API_URL}/api/reports/${reportId}/ai-check`, {
+            method: 'POST',
+            headers: { ...authHeaders() }
+        });
+        const data = await res.json();
+        alert(`Оценка ИИ: ${data.score}/100\n${data.feedback}`);
+        loadReports();
+    } catch (e) {
+        alert('Ошибка ИИ-проверки: ' + e.message);
+    }
+}
+
+async function submitReportById(reportId) {
+    try {
+        const res = await fetch(`${API_URL}/api/reports/${reportId}/submit`, {
+            method: 'POST',
+            headers: { ...authHeaders() }
+        });
+        if (!res.ok) throw new Error(await res.text());
+        loadReports();
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
+
+async function reviewReport(reportId, status) {
+    const comment = prompt('Комментарий к проверке:');
+    try {
+        const res = await fetch(`${API_URL}/api/reports/${reportId}/review`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            body: JSON.stringify({ status, comment: comment || '' })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        loadReports();
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
+
+// === Управление сотрудниками ===
+
+function openEmployeeModal() {
+    document.getElementById('employee-modal').classList.remove('hidden');
+    loadEmployeeModalData();
+}
+
+function closeEmployeeModal() {
+    document.getElementById('employee-modal').classList.add('hidden');
+    hideEmployeeForm();
+}
+
+async function loadEmployeeModalData() {
+    const table = document.getElementById('employees-table');
+    try {
+        const res = await fetch(`${API_URL}/api/employees`, { headers: { ...authHeaders() } });
+        const emps = await res.json();
+        let html = '<table style="width:100%; border-collapse:collapse; font-size:13px;"><thead><tr style="background:#f1f5f9;"><th style="padding:10px; text-align:left;">ФИО</th><th style="padding:10px; text-align:left;">Должность</th><th style="padding:10px; text-align:left;">Команда</th><th style="padding:10px; text-align:left;">Действия</th></tr></thead><tbody>';
+        emps.forEach(e => {
+            html += `<tr style="border-bottom:1px solid #e2e8f0;">
+                <td style="padding:10px;">${escapeHtml(e.name)}</td>
+                <td style="padding:10px;">${escapeHtml(e.role)}</td>
+                <td style="padding:10px;">${escapeHtml(getTeamName(e.team_id))}</td>
+                <td style="padding:10px;">
+                    <button class="btn-secondary" style="padding:4px 8px; font-size:12px;" onclick="editEmployee('${e.id}', '${escapeHtml(e.name)}', '${escapeHtml(e.role)}', '${e.team_id||''}', '${escapeHtml((e.skills||[]).join(','))}', '${escapeHtml((e.projects_history||[]).join(','))}')">Редактировать</button>
+                    <button class="btn-secondary" style="padding:4px 8px; font-size:12px; margin-left:4px; color:#c62828; border-color:#c62828;" onclick="deleteEmployee('${e.id}')">Удалить</button>
+                </td>
+            </tr>`;
+        });
+        html += '</tbody></table>';
+        table.innerHTML = html;
+    } catch (e) {
+        table.innerHTML = '<p style="color:#c62828;">Ошибка загрузки</p>';
+    }
+
+    const teamSelect = document.getElementById('employee-team-select');
+    try {
+        const res = await fetch(`${API_URL}/api/teams`, { headers: { ...authHeaders() } });
+        const teams = await res.json();
+        teamSelect.innerHTML = '<option value="">-- Без команды --</option>';
+        teams.forEach(t => {
+            teamSelect.innerHTML += `<option value="${t.id}">${escapeHtml(t.name)}</option>`;
+        });
+    } catch (e) {}
+}
+
+function showEmployeeForm() {
+    document.getElementById('employee-form').style.display = 'block';
+    document.getElementById('employee-form-title').textContent = 'Добавить сотрудника';
+    document.getElementById('employee-edit-id').value = '';
+    document.getElementById('employee-name').value = '';
+    document.getElementById('employee-role').value = '';
+    document.getElementById('employee-skills').value = '';
+    document.getElementById('employee-projects').value = '';
+}
+
+function hideEmployeeForm() {
+    document.getElementById('employee-form').style.display = 'none';
+}
+
+function editEmployee(id, name, role, teamId, skills, projects) {
+    document.getElementById('employee-form').style.display = 'block';
+    document.getElementById('employee-form-title').textContent = 'Редактировать сотрудника';
+    document.getElementById('employee-edit-id').value = id;
+    document.getElementById('employee-name').value = name;
+    document.getElementById('employee-role').value = role;
+    document.getElementById('employee-team-select').value = teamId;
+    document.getElementById('employee-skills').value = skills;
+    document.getElementById('employee-projects').value = projects;
+}
+
+async function saveEmployee() {
+    const id = document.getElementById('employee-edit-id').value;
+    const body = {
+        name: document.getElementById('employee-name').value,
+        role: document.getElementById('employee-role').value,
+        team_id: document.getElementById('employee-team-select').value || null,
+        skills: document.getElementById('employee-skills').value.split(',').map(s => s.trim()).filter(Boolean),
+        projects_history: document.getElementById('employee-projects').value.split(',').map(s => s.trim()).filter(Boolean),
+    };
+    try {
+        const url = id ? `${API_URL}/api/employees/${id}` : `${API_URL}/api/employees`;
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+            body: JSON.stringify(body)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        hideEmployeeForm();
+        loadEmployeeModalData();
+        loadEmployees();
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
+
+async function deleteEmployee(id) {
+    if (!confirm('Удалить сотрудника?')) return;
+    try {
+        const res = await fetch(`${API_URL}/api/employees/${id}`, {
+            method: 'DELETE',
+            headers: { ...authHeaders() }
+        });
+        if (!res.ok) throw new Error(await res.text());
+        loadEmployeeModalData();
+        loadEmployees();
+    } catch (e) {
+        alert('Ошибка: ' + e.message);
+    }
+}
+
 // === Инициализация ===
 document.addEventListener('DOMContentLoaded', () => {
-    loadGoalsList('validate');
-    loadGoalsList('decompose');
-    loadGoalsList('match');
-    loadTeams();
-    loadEmployees();
+    initAuth().then(() => {
+        loadGoalsList('validate');
+        loadGoalsList('decompose');
+        loadGoalsList('match');
+        loadTeams();
+        loadEmployees();
+        loadReports();
+        loadMyTasksForReports();
+    });
 
-    fetch(`${API_URL}/health`).catch(() => {
+    fetch(`${API_URL}/health`, { headers: { ...authHeaders() } }).catch(() => {
         console.log('Backend недоступен, используется демо-режим');
     });
 });

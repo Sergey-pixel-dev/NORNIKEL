@@ -3,14 +3,16 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
+from sqlalchemy.orm import selectinload
 
 from app.db.models import (
     Goal, GoalDecomposition, GoalAssignment, GoalVersion,
-    Team, Employee, Task
+    Team, Employee, Task, User, Report
 )
 from app.schemas import (
     GoalCreate, GoalUpdateValidation, GoalDecompositionCreate,
-    GoalAssignmentCreate, GoalVersionCreate, TaskCreate, TaskUpdate
+    GoalAssignmentCreate, GoalVersionCreate, TaskCreate, TaskUpdate,
+    EmployeeCreate, EmployeeUpdate, ReportCreate, ReportUpdate
 )
 
 
@@ -33,6 +35,39 @@ async def get_goals(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[G
         select(Goal).order_by(desc(Goal.created_at)).offset(skip).limit(limit)
     )
     return result.scalars().all()
+
+
+async def get_goals_for_user(
+    db: AsyncSession, user: User, employee: Optional[Employee], skip: int = 0, limit: int = 100
+) -> List[Goal]:
+    if user.role == "director":
+        return await get_goals(db, skip=skip, limit=limit)
+
+    if user.role == "dept_head" and employee and employee.team_id:
+        # Цели, у которых есть tasks для его команды
+        subq = select(Task.goal_id).where(Task.team_id == employee.team_id).subquery()
+        result = await db.execute(
+            select(Goal)
+            .where(Goal.id.in_(subq))
+            .order_by(desc(Goal.created_at))
+            .offset(skip)
+            .limit(limit)
+        )
+        return result.scalars().all()
+
+    if user.role == "employee" and employee:
+        # Только цели где есть назначенная на него задача
+        subq = select(Task.goal_id).where(Task.assigned_employee_id == employee.id).subquery()
+        result = await db.execute(
+            select(Goal)
+            .where(Goal.id.in_(subq))
+            .order_by(desc(Goal.created_at))
+            .offset(skip)
+            .limit(limit)
+        )
+        return result.scalars().all()
+
+    return []
 
 
 async def get_goal(db: AsyncSession, goal_id: UUID) -> Optional[Goal]:
@@ -147,11 +182,41 @@ async def get_teams(db: AsyncSession) -> List[Team]:
     return result.scalars().all()
 
 
+async def get_teams_for_user(db: AsyncSession, user: User, employee: Optional[Employee]) -> List[Team]:
+    if user.role == "director":
+        return await get_teams(db)
+    if employee and employee.team_id:
+        result = await db.execute(
+            select(Team).where(Team.id == employee.team_id)
+        )
+        team = result.scalar_one_or_none()
+        return [team] if team else []
+    return []
+
+
 # --- Employees ---
 
 async def get_employees(db: AsyncSession) -> List[Employee]:
     result = await db.execute(select(Employee).order_by(Employee.name))
     return result.scalars().all()
+
+
+async def get_employees_for_user(
+    db: AsyncSession, user: User, employee: Optional[Employee]
+) -> List[Employee]:
+    if user.role == "director":
+        # Director не видит сотрудников отделов
+        return []
+    if user.role == "dept_head" and employee and employee.team_id:
+        # Только сотрудники своей команды
+        result = await db.execute(
+            select(Employee).where(Employee.team_id == employee.team_id).order_by(Employee.name)
+        )
+        return result.scalars().all()
+    if user.role == "employee" and employee:
+        # Employee никого не видит (или только себя)
+        return []
+    return []
 
 
 async def get_employee(db: AsyncSession, employee_id: UUID) -> Optional[Employee]:
@@ -166,6 +231,53 @@ async def get_employees_by_team(db: AsyncSession, team_id: UUID) -> List[Employe
     return result.scalars().all()
 
 
+async def create_employee(db: AsyncSession, data: EmployeeCreate) -> Employee:
+    emp = Employee(
+        name=data.name,
+        role=data.role,
+        skills=data.skills or [],
+        projects_history=data.projects_history or [],
+        team_id=data.team_id,
+        user_id=data.user_id,
+    )
+    db.add(emp)
+    await db.commit()
+    await db.refresh(emp)
+    return emp
+
+
+async def update_employee(db: AsyncSession, employee_id: UUID, data: EmployeeUpdate) -> Optional[Employee]:
+    result = await db.execute(select(Employee).where(Employee.id == employee_id))
+    emp = result.scalar_one_or_none()
+    if not emp:
+        return None
+    if data.name is not None:
+        emp.name = data.name
+    if data.role is not None:
+        emp.role = data.role
+    if data.skills is not None:
+        emp.skills = data.skills
+    if data.projects_history is not None:
+        emp.projects_history = data.projects_history
+    if data.team_id is not None:
+        emp.team_id = data.team_id
+    if data.user_id is not None:
+        emp.user_id = data.user_id
+    await db.commit()
+    await db.refresh(emp)
+    return emp
+
+
+async def delete_employee(db: AsyncSession, employee_id: UUID) -> bool:
+    result = await db.execute(select(Employee).where(Employee.id == employee_id))
+    emp = result.scalar_one_or_none()
+    if not emp:
+        return False
+    await db.delete(emp)
+    await db.commit()
+    return True
+
+
 # --- Tasks ---
 
 async def create_task(db: AsyncSession, data: TaskCreate) -> Task:
@@ -175,6 +287,9 @@ async def create_task(db: AsyncSession, data: TaskCreate) -> Task:
         text=data.text,
         type=data.type,
         order=data.order,
+        assigned_employee_id=data.assigned_employee_id,
+        creator_id=data.creator_id,
+        manager_task_type=data.manager_task_type,
     )
     db.add(task)
     await db.commit()
@@ -187,6 +302,33 @@ async def get_tasks_by_goal(db: AsyncSession, goal_id: UUID) -> List[Task]:
         select(Task).where(Task.goal_id == goal_id).order_by(Task.order)
     )
     return result.scalars().all()
+
+
+async def get_tasks_for_user(
+    db: AsyncSession, user: User, employee: Optional[Employee]
+) -> List[Task]:
+    if user.role == "director":
+        # Director видит только team-level и individual задачи (не subtasks, не manager tasks)
+        result = await db.execute(
+            select(Task).where(Task.type.in_(["team", "individual"])).order_by(Task.order)
+        )
+        return result.scalars().all()
+
+    if user.role == "dept_head" and employee and employee.team_id:
+        # Все задачи своей команды (subtasks + team-level)
+        result = await db.execute(
+            select(Task).where(Task.team_id == employee.team_id).order_by(Task.order)
+        )
+        return result.scalars().all()
+
+    if user.role == "employee" and employee:
+        # Только свои назначенные задачи
+        result = await db.execute(
+            select(Task).where(Task.assigned_employee_id == employee.id).order_by(Task.order)
+        )
+        return result.scalars().all()
+
+    return []
 
 
 async def update_task(db: AsyncSession, task_id: UUID, data: TaskUpdate) -> Optional[Task]:
@@ -202,6 +344,10 @@ async def update_task(db: AsyncSession, task_id: UUID, data: TaskUpdate) -> Opti
         task.assigned_employee_id = data.assigned_employee_id
     if data.order is not None:
         task.order = data.order
+    if data.creator_id is not None:
+        task.creator_id = data.creator_id
+    if data.manager_task_type is not None:
+        task.manager_task_type = data.manager_task_type
     await db.commit()
     await db.refresh(task)
     return task
@@ -213,6 +359,68 @@ async def delete_task(db: AsyncSession, task_id: UUID) -> bool:
     if not task:
         return False
     await db.delete(task)
+    await db.commit()
+    return True
+
+
+# --- Reports ---
+
+async def create_report(db: AsyncSession, data: ReportCreate, author_id: UUID) -> Report:
+    report = Report(
+        task_id=data.task_id,
+        author_id=author_id,
+        content=data.content,
+    )
+    db.add(report)
+    await db.commit()
+    await db.refresh(report)
+    return report
+
+
+async def get_report(db: AsyncSession, report_id: UUID) -> Optional[Report]:
+    result = await db.execute(select(Report).where(Report.id == report_id))
+    return result.scalar_one_or_none()
+
+
+async def get_reports_for_user(
+    db: AsyncSession, user: User, employee: Optional[Employee]
+) -> List[Report]:
+    stmt = select(Report).options(selectinload(Report.author))
+    if user.role == "director":
+        subq = select(Employee.id).join(User).where(User.role == "dept_head").subquery()
+        stmt = stmt.where(Report.author_id.in_(subq)).order_by(desc(Report.created_at))
+    elif user.role == "dept_head" and employee and employee.team_id:
+        subq = select(Employee.id).where(Employee.team_id == employee.team_id).subquery()
+        stmt = stmt.where(Report.author_id.in_(subq)).order_by(desc(Report.created_at))
+    elif user.role == "employee" and employee:
+        stmt = stmt.where(Report.author_id == employee.id).order_by(desc(Report.created_at))
+    else:
+        return []
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+async def update_report(db: AsyncSession, report_id: UUID, data: ReportUpdate) -> Optional[Report]:
+    result = await db.execute(select(Report).where(Report.id == report_id))
+    report = result.scalar_one_or_none()
+    if not report:
+        return None
+    for field in ("content", "status", "ai_score", "ai_feedback",
+                  "reviewed_by", "reviewed_at", "review_comment", "attachment_url"):
+        val = getattr(data, field, None)
+        if val is not None:
+            setattr(report, field, val)
+    await db.commit()
+    await db.refresh(report)
+    return report
+
+
+async def delete_report(db: AsyncSession, report_id: UUID) -> bool:
+    result = await db.execute(select(Report).where(Report.id == report_id))
+    report = result.scalar_one_or_none()
+    if not report:
+        return False
+    await db.delete(report)
     await db.commit()
     return True
 

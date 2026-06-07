@@ -15,6 +15,20 @@ def utc_now():
     return datetime.utcnow()
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(50), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
+
+    employee: Mapped[Optional["Employee"]] = relationship("Employee", back_populates="user", uselist=False)
+
+
 class Team(Base):
     __tablename__ = "teams"
 
@@ -22,6 +36,9 @@ class Team(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     specialization: Mapped[str] = mapped_column(Text, default="")
     description: Mapped[str] = mapped_column(Text, default="")
+    manager_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(default=utc_now)
 
 
@@ -29,6 +46,9 @@ class Employee(Base):
     __tablename__ = "employees"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     team_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("teams.id", ondelete="SET NULL"), nullable=True
     )
@@ -37,6 +57,8 @@ class Employee(Base):
     skills: Mapped[list] = mapped_column(JSON, default=list)
     projects_history: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(default=utc_now)
+
+    user: Mapped[Optional["User"]] = relationship("User", back_populates="employee")
 
 
 class Goal(Base):
@@ -99,7 +121,7 @@ class Task(Base):
     __tablename__ = "tasks"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    goal_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"))
+    goal_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"), nullable=True)
     team_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("teams.id", ondelete="SET NULL"), nullable=True
     )
@@ -108,10 +130,14 @@ class Task(Base):
     assigned_employee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
     )
+    creator_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
+    )
+    manager_task_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(default=utc_now)
 
-    goal: Mapped["Goal"] = relationship(back_populates="tasks")
+    goal: Mapped[Optional["Goal"]] = relationship(back_populates="tasks")
 
 
 class GoalAssignment(Base):
@@ -128,3 +154,26 @@ class GoalAssignment(Base):
     created_at: Mapped[datetime] = mapped_column(default=utc_now)
 
     goal: Mapped["Goal"] = relationship(back_populates="assignments")
+
+
+class Report(Base):
+    __tablename__ = "reports"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    author_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("employees.id", ondelete="CASCADE"))
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="draft")
+    ai_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    ai_feedback: Mapped[str] = mapped_column(Text, default="")
+    reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    review_comment: Mapped[str] = mapped_column(Text, default="")
+    attachment_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now)
+
+    author: Mapped["Employee"] = relationship("Employee", foreign_keys="Report.author_id")
+    task: Mapped["Task"] = relationship("Task", foreign_keys="Report.task_id")

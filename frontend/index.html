@@ -10,6 +10,12 @@
     <link rel="stylesheet" href="css/nornikel-theme.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap" rel="stylesheet">
+    <script>
+        const token = localStorage.getItem('access_token');
+        if (!token && !window.location.pathname.includes('login')) {
+            window.location.href = '/login.html';
+        }
+    </script>
 </head>
 <body>
     <!-- Шапка -->
@@ -25,9 +31,10 @@
             <h1 class="app-title">Карты КПЭ</h1>
         </div>
         <div class="shell-header-right">
-            <div class="user-info">
-                <span class="user-name">Иванов Алексей Петрович</span>
-                <div class="user-avatar">ИА</div>
+            <div class="user-info" id="header-user-info">
+                <span class="user-name" id="header-user-name">Загрузка...</span>
+                <div class="user-avatar" id="header-user-avatar">--</div>
+                <button class="btn-secondary" style="padding: 6px 12px; font-size: 12px; margin-left: 8px;" onclick="logout()">Выйти</button>
             </div>
         </div>
     </header>
@@ -43,17 +50,21 @@
                 </svg>
             </div>
             <div class="profile-details">
-                <h2 class="profile-name">Иванов Алексей Петрович</h2>
-                <p class="profile-position">Директор департамента цифровизации</p>
+                <h2 class="profile-name" id="profile-name">Загрузка...</h2>
+                <p class="profile-position" id="profile-position">Загрузка...</p>
+            </div>
+            <div style="margin-left: auto; display: flex; gap: 8px;" id="profile-actions">
+                <button class="btn-secondary" id="btn-manage-employees" style="display:none;" onclick="openEmployeeModal()">👥 Управление сотрудниками</button>
             </div>
         </div>
 
         <!-- Табы -->
         <div class="tabs">
-            <button class="tab-btn active" data-tab="kpi">КОМАНДНЫЕ КПЭ (4)</button>
-            <button class="tab-btn" data-tab="individual">ИНДИВИДУАЛЬНЫЕ (3)</button>
-            <button class="tab-btn" data-tab="ai-assistant">ИИ-ассистент OKR</button>
-            <button class="tab-btn" data-tab="comments">КОММЕНТАРИИ</button>
+            <button class="tab-btn active" data-tab="kpi" id="tab-btn-kpi">КОМАНДНЫЕ КПЭ</button>
+            <button class="tab-btn" data-tab="individual" id="tab-btn-individual">ИНДИВИДУАЛЬНЫЕ</button>
+            <button class="tab-btn" data-tab="ai-assistant" id="tab-btn-ai-assistant">ИИ-ассистент OKR</button>
+            <button class="tab-btn" data-tab="reports" id="tab-btn-reports">ОТЧЕТЫ</button>
+            <button class="tab-btn" data-tab="comments" id="tab-btn-comments">КОММЕНТАРИИ</button>
         </div>
 
         <!-- Вкладка КПЭ -->
@@ -429,6 +440,40 @@
             </div>
         </div>
 
+        <!-- Вкладка Отчеты -->
+        <div class="tab-content" id="tab-reports">
+            <div id="reports-container">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h3 class="section-subtitle" style="margin:0;">Отчеты</h3>
+                    <button class="btn-primary" id="btn-new-report" style="display:none;" onclick="openReportForm()">+ Новый отчет</button>
+                </div>
+                <div id="reports-list">
+                    <!-- dynamic reports -->
+                </div>
+            </div>
+            <!-- Форма создания отчета -->
+            <div id="report-form-section" style="display:none; margin-top: 20px; padding: 20px; background: #f7f9fa; border-radius: 8px; border: 1px solid #e2e8f0;">
+                <h4 class="section-subtitle">Новый отчет</h4>
+                <div class="input-group">
+                    <label class="field-label">Задача</label>
+                    <select id="report-task-select" class="field-select"></select>
+                </div>
+                <div class="input-group">
+                    <label class="field-label">Содержание отчета</label>
+                    <textarea id="report-content" class="field-textarea" rows="5" placeholder="Опишите выполненную работу..."></textarea>
+                </div>
+                <div class="input-group">
+                    <label class="field-label">Прикрепить PDF (опционально)</label>
+                    <input type="file" id="report-attachment" class="field-input" accept=".pdf">
+                </div>
+                <div style="display: flex; gap: 12px; margin-top: 12px;">
+                    <button class="btn-primary" onclick="submitReport()">Сохранить черновик</button>
+                    <button class="btn-secondary" onclick="closeReportForm()">Отмена</button>
+                </div>
+                <div id="report-ai-result" class="result-box hidden" style="margin-top: 16px;"></div>
+            </div>
+        </div>
+
         <!-- Вкладка Комментарии -->
         <div class="tab-content" id="tab-comments">
             <div class="placeholder-section">
@@ -471,6 +516,63 @@
 
 
 
-    <script src="js/app.js?v=4"></script>
+    <!-- Employee Modal -->
+    <div id="employee-modal" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3>Управление сотрудниками</h3>
+                <button class="modal-close" onclick="closeEmployeeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="employee-form" style="display:none; margin-bottom: 20px; padding: 16px; background: #f7f9fa; border-radius: 8px;">
+                    <h4 class="section-subtitle" id="employee-form-title">Добавить сотрудника</h4>
+                    <input type="hidden" id="employee-edit-id">
+                    <div class="input-group">
+                        <label class="field-label">ФИО</label>
+                        <input type="text" class="field-input" id="employee-name" placeholder="Иванов И.И.">
+                    </div>
+                    <div class="input-group">
+                        <label class="field-label">Должность</label>
+                        <input type="text" class="field-input" id="employee-role" placeholder="Разработчик">
+                    </div>
+                    <div class="input-group">
+                        <label class="field-label">Команда</label>
+                        <select class="field-select" id="employee-team-select"></select>
+                    </div>
+                    <div class="input-group">
+                        <label class="field-label">Навыки (через запятую)</label>
+                        <input type="text" class="field-input" id="employee-skills" placeholder="Python, SQL, ...">
+                    </div>
+                    <div class="input-group">
+                        <label class="field-label">История проектов (через запятую)</label>
+                        <input type="text" class="field-input" id="employee-projects" placeholder="Проект 1, Проект 2">
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-top: 12px;">
+                        <button class="btn-primary" onclick="saveEmployee()">Сохранить</button>
+                        <button class="btn-secondary" onclick="hideEmployeeForm()">Отмена</button>
+                    </div>
+                </div>
+                <button class="btn-add" onclick="showEmployeeForm()">+ Добавить сотрудника</button>
+                <div id="employees-table" style="margin-top: 16px;">
+                    <!-- dynamic table -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно просмотра отчета -->
+    <div id="report-view-modal" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3>Отчет</h3>
+                <button class="modal-close" onclick="closeReportViewModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="report-view-body" style="font-size: 14px; line-height: 1.6;">
+                <!-- dynamic content -->
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js?v=6"></script>
 </body>
 </html>

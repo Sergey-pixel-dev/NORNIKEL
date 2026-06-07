@@ -204,6 +204,38 @@ async def breakdown_team_task_llm(
     return _parse_breakdown(raw)
 
 
+async def check_report_llm(report_text: str, task_text: str) -> dict:
+    prompt = (
+        f"Оцени качество отчета по задаче от 0 до 100. "
+        f"Задача: {task_text}\n"
+        f"Отчет: {report_text}\n\n"
+        f"Ответь строго в формате:\n"
+        f"Оценка: <число от 0 до 100>\n"
+        f"Обратная связь: <краткая обратная связь>"
+    )
+    raw = await chat([], prompt)
+    return _parse_report_check(raw)
+
+
+def _parse_report_check(raw: str) -> dict:
+    lines = [l.strip() for l in raw.splitlines() if l.strip()]
+    score = None
+    feedback = ""
+    for line in lines:
+        if line.lower().startswith("оценка:"):
+            try:
+                score = int("".join(filter(str.isdigit, line)))
+            except ValueError:
+                score = 50
+        elif line.lower().startswith("обратная связь:"):
+            feedback = line.split(":", 1)[1].strip()
+    if score is None:
+        score = 50
+    if not feedback:
+        feedback = "Отчет проверен. Рекомендуется уточнить детали."
+    return {"score": max(0, min(100, score)), "feedback": feedback}
+
+
 def _parse_breakdown(raw: str) -> dict:
     lines = [l.strip() for l in raw.splitlines() if l.strip()]
     subtasks = []

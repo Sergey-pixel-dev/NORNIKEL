@@ -3,6 +3,16 @@ from typing import List
 from app.schemas import AIRewriteResponse
 
 
+def mock_check_report(report_text: str, task_text: str) -> dict:
+    score = 75 if len(report_text) > 100 else 45
+    feedback = (
+        "Отчет содержит основные пункты и соответствует задаче. Рекомендуется добавить количественные показатели."
+        if score > 50
+        else "Отчет слишком короткий или неполный. Требуется доработка с указанием конкретных результатов."
+    )
+    return {"score": score, "feedback": feedback}
+
+
 VAGUE_WORDS = [
     "повысить", "улучшить", "оптимизировать", "эффективность", "качество",
     "стремиться", "пытаться", "понять", "изучить", "разобраться",

@@ -187,3 +187,122 @@ class AIRewriteResponse(BaseModel):
 
 class AssignTasksPayload(BaseModel):
     assignments: List[dict]  # [{"task_id": ..., "employee_id": ...}]
+
+
+# --- Auth / Users ---
+
+class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    email: str
+    role: str
+    name: str
+    is_active: bool
+    created_at: datetime
+
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+    user: UserRead
+
+
+# --- Employees CRUD ---
+
+class EmployeeCreate(BaseModel):
+    name: str
+    role: str = ""
+    skills: List[str] = []
+    projects_history: List[str] = []
+    team_id: Optional[UUID] = None
+    user_id: Optional[UUID] = None
+
+
+class EmployeeUpdate(BaseModel):
+    name: Optional[str] = None
+    role: Optional[str] = None
+    skills: Optional[List[str]] = None
+    projects_history: Optional[List[str]] = None
+    team_id: Optional[UUID] = None
+    user_id: Optional[UUID] = None
+
+
+# --- Reports ---
+
+class ReportCreate(BaseModel):
+    task_id: UUID
+    content: str
+
+
+class ReportRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    task_id: UUID
+    author_id: UUID
+    author_name: Optional[str] = None
+    content: str
+    status: str
+    ai_score: Optional[int]
+    ai_feedback: str
+    reviewed_by: Optional[UUID]
+    reviewed_at: Optional[datetime]
+    review_comment: str
+    attachment_url: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReportUpdate(BaseModel):
+    content: Optional[str] = None
+    status: Optional[str] = None
+    ai_score: Optional[int] = None
+    ai_feedback: Optional[str] = None
+    reviewed_by: Optional[UUID] = None
+    reviewed_at: Optional[datetime] = None
+    review_comment: Optional[str] = None
+    attachment_url: Optional[str] = None
+
+
+# --- Task updates for auth / manager fields ---
+
+class TaskRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    goal_id: Optional[UUID]
+    team_id: Optional[UUID]
+    text: str
+    type: str
+    assigned_employee_id: Optional[UUID]
+    creator_id: Optional[UUID]
+    manager_task_type: Optional[str]
+    order: int
+    created_at: datetime
+
+
+class TaskCreate(BaseModel):
+    goal_id: Optional[UUID] = None
+    team_id: Optional[UUID] = None
+    text: str
+    type: str = "general"
+    assigned_employee_id: Optional[UUID] = None
+    creator_id: Optional[UUID] = None
+    manager_task_type: Optional[str] = None
+    order: int = 0
+
+
+class TaskUpdate(BaseModel):
+    text: Optional[str] = None
+    team_id: Optional[UUID] = None
+    type: Optional[str] = None
+    assigned_employee_id: Optional[UUID] = None
+    creator_id: Optional[UUID] = None
+    manager_task_type: Optional[str] = None
+    order: Optional[int] = None

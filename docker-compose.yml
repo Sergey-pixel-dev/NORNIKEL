@@ -32,6 +32,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - backend_uploads:/app/uploads
     networks:
       - nornikel-network
     extra_hosts:
@@ -63,3 +65,4 @@ networks:
 
 volumes:
   postgres_data:
+  backend_uploads:
